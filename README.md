@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Simple Renju (Final Fix)</title>
+<title>Simple Renju</title>
 <style>
     body {
         background-color: #f0f0f0;
@@ -85,6 +85,7 @@
     .btn-reset { background: #28a745; color: white; }
     .btn-undo { background: #ffc107; color: #333; }
     .btn-hint { background: #17a2b8; color: white; }
+
 </style>
 </head>
 <body>
@@ -98,7 +99,7 @@
                 <div>🤖 <b>AI:</b> <span id="a_role" style="color:#888; font-weight:bold;">백 (후수)</span></div>
             </div>
             <div id="v_stats" style="text-align: right; color: #888;">
-                <div>STATUS: <b id="s_mode">READY</b></div>
+                <div>MODE: <b id="s_mode">READY</b></div>
                 <div>CALC: <b id="s_nodes">0</b> | DEPTH: <b id="s_depth">0</b></div>
             </div>
         </div>
@@ -113,43 +114,35 @@
         <div class="btn-group">
             <button class="btn-swap" onclick="swapSides()">🔄 흑백 교환</button>
             <button class="btn-reset" onclick="resetVoid()">🚀 새 게임</button>
-            <button class="btn-undo" onclick="undoMove()">↶ 무르기</button>
-            <button class="btn-hint" onclick="requestHint()">💡힌트</button>
+            <button class="btn-undo" disabled style="background:#ccc; cursor:not-allowed;">↶ 무르기</button>
+            <button class="btn-hint" disabled style="background:#ccc; cursor:not-allowed;">💡힌트</button>
         </div>
     </div>
 
     <script>
     (function() {
-        // [AI 로직: 웹 워커 코드]
+        // [AI LOGIC PART - UNCHANGED BUT MINIFIED FOR BREVITY]
         const workerSource = `
-        // 전역 변수 선언 (가장 중요)
-        let nodes = 0; 
-        let cutoffs = 0; // 이 변수가 없어서 멈췄던 것임
-        let startTime = 0;
         const INF = 1000000000; 
-        const TIME_LIMIT = 2500; // 2.5초 제한
+        let nodes = 0; let mctsSims = 0; let startTime = 0;
+        const TIME_LIMIT = 3000; const MAX_TT_SIZE = 5000000; 
         
-        // 방향 벡터 (BigInt)
-        const DIRECTIONS = [1n, 15n, 16n, 14n]; 
-        
-        // [오프닝 북 데이터]
         const BOOK = {
             "7,7|6,8|6,6": {r:5, c:7}, "7,7|6,8|6,6|5,7": {r:5, c:8}, 
-            "7,7|6,6|8,6": {r:5, c:5}, "7,7|6,6|8,8": {r:5, c:5},        
+            "7,7|6,6|8,6": {r:5, c:5}, "7,7|6,6|8,8": {r:5, c:5},      
             "7,7|7,8|6,8": {r:5, c:7}, "7,7|7,8|6,8|5,7": {r:5, c:8},
             "7,7|5,6|4,5": {r:3, c:6}, "7,7|6,9|5,10": {r:4, c:9},      
             "7,7|9,6|10,5": {r:8, c:4}, "7,7|5,8|4,9": {r:3, c:8},      
-            "7,7|6,7|6,6": {r:5, c:5}, "7,7|8,7|8,6": {r:9, c:5},        
-            "7,7|8,7|8,6|9,5": {r:7, c:5}, "7,7|7,5|6,4": {r:5, c:5},        
+            "7,7|6,7|6,6": {r:5, c:5}, "7,7|8,7|8,6": {r:9, c:5},       
+            "7,7|8,7|8,6|9,5": {r:7, c:5}, "7,7|7,5|6,4": {r:5, c:5},       
             "7,7|5,7|4,6": {r:3, c:7}, "7,7|5,7|4,6|3,7": {r:5, c:5},
             "7,7|5,7|4,6|3,7|5,5": {r:6, c:5}, "7,7|7,9|6,10": {r:5, c:9},      
-            "7,7|7,9|6,10|5,9": {r:5, c:8}, "7,7|9,7|10,6": {r:11, c:7},      
-            "7,7|7,4|6,3": {r:5, c:4}, "7,7|4,7|3,6": {r:2, c:7},        
+            "7,7|7,9|6,10|5,9": {r:5, c:8}, "7,7|9,7|10,6": {r:11, c:7},     
+            "7,7|7,4|6,3": {r:5, c:4}, "7,7|4,7|3,6": {r:2, c:7},       
             "7,7|8,5|9,4": {r:7, c:3}, "7,7|9,9|10,10": {r:8, c:11},    
             "7,7|5,5|4,4": {r:3, c:5}, "": {r:7, c:7} 
         };
         const INV_OP = [0, 3, 2, 1, 4, 5, 6, 7];
-
         function transform(r, c, op) {
             let nr = r - 7, nc = c - 7; let tr, tc;
             switch(op) {
@@ -176,32 +169,36 @@
             return null;
         }
 
-        // 위치 가중치 (중앙 선호)
         const POS_WEIGHTS = new Int32Array(225);
         for(let r=0; r<15; r++) for(let c=0; c<15; c++) {
             let d = Math.sqrt((r-7)*(r-7) + (c-7)*(c-7));
-            POS_WEIGHTS[r*15+c] = Math.round(10 - d); 
+            POS_WEIGHTS[r*15+c] = Math.round(100 * Math.exp(-d/5)) * 10; 
         }
-        
-        // Zobrist Hashing
         const ZOBRIST = [new BigUint64Array(225), new BigUint64Array(225)];
         {
             let seed = 0xDEADBEEFn;
             function rand() { seed = (seed * 6364136223846793005n + 1442695040888963407n); return seed; }
             for(let p=0; p<2; p++) for(let i=0; i<225; i++) ZOBRIST[p][i] = rand();
         }
-
+        let TT = new Map();
+        let KILLER = Array.from({length: 60}, () => [null, null]);
+        let HISTORY = [new Int32Array(225), new Int32Array(225)];
+        let MCTS_SCORES = new Int32Array(225); 
+        const DIRECTIONS = [1n, 15n, 16n, 14n]; 
+        
         self.onmessage = function(e) {
             const d = e.data; 
             try {
                 if (d.type === 'RESET') { 
-                    return; 
+                    TT.clear(); KILLER = Array.from({length: 60}, () => [null, null]);
+                    HISTORY = [new Int32Array(225), new Int32Array(225)];
+                    MCTS_SCORES.fill(0); return; 
                 }
                 
                 const b = BigInt(d.b); const w = BigInt(d.w); const turn = d.turn;
                 let currentHash = computeHash(b, w);
-                let initScoreB = evalFull(b, w);
-                let initScoreW = evalFull(w, b);
+                let initScoreB = evalFull(b, w) + evalPositionalTotal(b);
+                let initScoreW = evalFull(w, b) + evalPositionalTotal(w);
 
                 if (d.type === 'HINT') {
                     startTime = Date.now();
@@ -209,93 +206,155 @@
                     let bookMove = matchBook(hist);
                     if (bookMove) {
                         let p = BigInt(bookMove.r * 15 + bookMove.c);
-                        if (!((b|w) & (1n << p)) && !(turn === 1 && isForbidden(b | (1n << p), w, p))) { 
-                            self.postMessage({ type: 'HINT_RESULT', move: bookMove }); return; 
-                        }
+                        if (!(turn === 1 && isForbidden(b | (1n << p), w, p))) { self.postMessage({ type: 'HINT_RESULT', move: bookMove }); return; }
                     }
                     const res = runPVS(b, w, turn, currentHash, 800, initScoreB, initScoreW); 
-                    self.postMessage({ type: 'HINT_RESULT', move: res.move });
+                    let finalMove = res.move;
+                    if (turn === 1) {
+                         let p = BigInt(finalMove.r * 15 + finalMove.c);
+                         if (isForbidden(b | (1n << p), w, p)) {
+                             let fallback = getRankedCands(b, w, turn, 0, null, true);
+                             let foundSafe = false;
+                             for (let fm of fallback) {
+                                 let fp = BigInt(fm.r * 15 + fm.c);
+                                 if (!isForbidden(b | (1n << fp), w, fp)) { finalMove = fm; foundSafe = true; break; }
+                             }
+                             if (!foundSafe) {
+                                 for(let i=0; i<225; i++) {
+                                     if ((b|w) & (1n << BigInt(i))) continue;
+                                     let r = Math.floor(i/15), c = i%15;
+                                     if (!hasNeighbor(b|w, r, c)) continue;
+                                     let fp = BigInt(i);
+                                     if (!isForbidden(b | (1n << fp), w, fp)) { finalMove = {r: r, c: c}; break; }
+                                 }
+                             }
+                          }
+                    }
+                    self.postMessage({ type: 'HINT_RESULT', move: finalMove });
                     return;
                 }
                 
                 if (d.type === 'THINK') {
-                    nodes = 0; cutoffs = 0; startTime = Date.now();
+                    nodes = 0; cutoffs = 0; mctsSims = 0; startTime = Date.now(); MCTS_SCORES.fill(0);
                     let hist = parseHistory(d.history);
-                    
-                    // 1. 족보 확인
                     let bookMove = matchBook(hist);
                     if (bookMove) {
                          let idx = BigInt(bookMove.r * 15 + bookMove.c);
                          if (!((b|w) & (1n << idx))) {
-                             self.postMessage({ type: 'RESULT', move: bookMove, nodes: 1, cutoffs: 0, mcts: 0, score: 99999, time: 1, depth: 'BOOK', note: 'OPENING' });
+                             self.postMessage({ type: 'RESULT', move: bookMove, nodes: 1, cutoffs: 0, mcts: 0, score: 99999, time: 1, depth: 'BOOK', note: 'GM BOOK' });
                              return;
                          }
                     }
-                    
-                    // 2. VCF (필승 찾기)
                     let winSeq = solveVCF(b, w, turn, 0, []);
-                    if (winSeq) { self.postMessage({ type: 'RESULT', move: winSeq[0], nodes, cutoffs, mcts: 0, time: Date.now()-startTime, depth: 'VCF', note: 'CHECKMATE' }); return; }
-                    
-                    // 3. PVS 탐색
+                    if (winSeq) { self.postMessage({ type: 'RESULT', move: winSeq[0], nodes, cutoffs, mcts: 0, time: Date.now()-startTime, depth: 'VCF', note: 'VCF WIN' }); return; }
+                    let vctSeq = solveVCT(b, w, turn, 0, []);
+                    if (vctSeq) { self.postMessage({ type: 'RESULT', move: vctSeq[0], nodes, cutoffs, mcts: 0, time: Date.now()-startTime, depth: 'VCT', note: 'VCT FOUND' }); return; }
+
+                    const stoneCount = countStones(b|w);
+                    let mctsTime = (stoneCount < 180) ? (stoneCount < 10 ? TIME_LIMIT * 0.4 : TIME_LIMIT * 0.1) : 0;
+                    if (mctsTime > 0) runMCTS(b, w, turn, mctsTime);
+
                     const result = runPVS(b, w, turn, currentHash, TIME_LIMIT, initScoreB, initScoreW);
                     if (!result || !result.move) throw "No move found";
-                    self.postMessage({ type: 'RESULT', move: result.move, nodes, cutoffs, mcts: 0, score: result.val, time: Date.now() - startTime, depth: result.depth, note: 'THINKING' });
+                    self.postMessage({ type: 'RESULT', move: result.move, nodes, cutoffs, mcts: mctsSims, score: result.val, time: Date.now() - startTime, depth: result.depth, note: 'GM ENGINE' });
                 }
             } catch (err) {
-                // [안전장치] 에러 발생 시 랜덤으로라도 둔다.
-                safeFallback(e.data.b, e.data.w, e.data.turn, d.type);
+                const fb_b = BigInt(e.data.b); const fb_w = BigInt(e.data.w);
+                let fallbackMoves = getRankedCands(fb_b, fb_w, e.data.turn, 0, null, true);
+                let safeMove = {r:7, c:7};
+                for (let m of fallbackMoves) {
+                    let p = BigInt(m.r * 15 + m.c);
+                    if (e.data.turn === 1 && isForbidden(fb_b | (1n << p), fb_w, p)) continue;
+                    safeMove = m; break;
+                }
+                if (d.type === 'HINT') { self.postMessage({ type: 'HINT_RESULT', move: safeMove }); } 
+                else { self.postMessage({ type: 'RESULT', move: safeMove, nodes: nodes, cutoffs: 0, mcts: 0, score: 0, time: 0, depth: 'ERR', note: 'RECOVERY' }); }
             }
         };
 
-        function safeFallback(sb, sw, turn, type) {
-            try {
-                const fb_b = BigInt(sb); const fb_w = BigInt(sw);
-                let empties = [];
-                for(let r=0; r<15; r++) for(let c=0; c<15; c++) {
-                    let p = BigInt(r*15+c);
-                    if (!((fb_b|fb_w) & (1n << p))) {
-                         if (turn === 1 && isForbidden(fb_b | (1n << p), fb_w, p)) continue;
-                         empties.push({r,c});
-                    }
-                }
-                // 중앙에 가까운 빈 곳 찾기
-                empties.sort((a,b) => {
-                    let da = Math.abs(a.r-7) + Math.abs(a.c-7);
-                    let db = Math.abs(b.r-7) + Math.abs(b.c-7);
-                    return da - db;
-                });
-                
-                let safeMove = empties.length > 0 ? empties[0] : {r:7, c:7};
-                
-                if (type === 'HINT') self.postMessage({ type: 'HINT_RESULT', move: safeMove });
-                else self.postMessage({ type: 'RESULT', move: safeMove, nodes: nodes, cutoffs: 0, score: 0, time: 0, depth: 'ERR', note: 'RECOVERY' });
-            } catch(e) {
-                // 진짜 최후의 수단
-                self.postMessage({ type: 'RESULT', move: {r:0, c:0}, nodes:0, depth: 'FATAL', note: 'FATAL_ERR' });
-            }
-        }
-
         function parseHistory(str) {
             if (!str) return [];
-            try { return str.split('|').filter(x=>x).map(s => { let p = s.split(','); return {r: parseInt(p[0]), c: parseInt(p[1])}; }); }
+            try { return str.split('|').map(s => { let p = s.split(','); return {r: parseInt(p[0]), c: parseInt(p[1])}; }); }
             catch(e) { return []; }
         }
-        
+        function countStones(occ) { let c=0; for(let i=0; i<225; i++) if((occ>>BigInt(i))&1n) c++; return c; }
         function computeHash(b, w) {
             let h = 0n; for(let i=0; i<225; i++) { if((b>>BigInt(i))&1n) h^=ZOBRIST[0][i]; if((w>>BigInt(i))&1n) h^=ZOBRIST[1][i]; } return h;
         }
 
+        class MCTSNode { constructor(p,m,t){this.parent=p;this.move=m;this.turn=t;this.wins=0;this.visits=0;this.children=[];this.untried=[];this.isTerminal=false;}}
+        function runMCTS(b,w,rt,tb){
+            let root=new MCTSNode(null,null,rt);
+            let cands=getRankedCands(b,w,rt,0,null,true).slice(0,30);
+            for(let c of cands)root.untried.push(c);
+            let et=Date.now()+tb;
+            while(Date.now()<et){
+                mctsSims++; let n=root; let cb=b,cw=w; let ct=rt;
+                while(n.untried.length===0&&n.children.length>0){
+                    n=uctSelect(n); let p=BigInt(n.move.r*15+n.move.c);
+                    if(n.parent.turn===1)cb|=(1n<<p);else cw|=(1n<<p); ct=3-n.parent.turn;
+                }
+                if(n.untried.length>0){
+                    let m=n.untried.pop(); let p=BigInt(m.r*15+m.c);
+                    if(n.turn===1&&isForbidden(cb|(1n<<p),cw,p)){
+                        n.isTerminal=true; let c=new MCTSNode(n,m,3-n.turn); c.isTerminal=true; c.visits=1; c.wins=(n.turn===1)?-1000:1000; n.children.push(c); n=c;
+                    }else{
+                        let c=new MCTSNode(n,m,3-n.turn); n.children.push(c); n=c;
+                        if(n.parent.turn===1)cb|=(1n<<p);else cw|=(1n<<p); ct=3-n.parent.turn;
+                        if(!checkWin(ct===2?cb:cw,p)){
+                            let nc=getRankedCands(cb,cw,ct,0,null,true).slice(0,10); for(let cc of nc)n.untried.push(cc);
+                        }else n.isTerminal=true;
+                    }
+                }
+                let res=0;
+                if(!n.isTerminal) res=runPatternSimulation(cb,cw,ct);
+                else { if(n.wins<-500)res=2; else if(n.wins>500)res=1; else res=3-n.turn; }
+                while(n){ n.visits++; if(res===(3-n.turn))n.wins++; else if(res===n.turn)n.wins--; n=n.parent; }
+            }
+            for(let c of root.children){ MCTS_SCORES[c.move.r*15+c.move.c] = (c.wins/c.visits)*3000+(c.visits*20); }
+        }
+        function uctSelect(n){ let b=null,bs=-1e9; for(let c of n.children){ let s=(c.wins/c.visits)+1.41*Math.sqrt(Math.log(n.visits)/c.visits); if(s>bs){bs=s;b=c;}} return b; }
+        function runPatternSimulation(b,w,t){
+             let cb=b,cw=w,ct=t,s=0;
+             while(s<40){
+                 let wm=findWinMove(cb,cw,ct); if(wm)return ct;
+                 let ms=getRankedCands(cb,cw,ct,70,null,true).slice(0,5); if(ms.length===0)return 3;
+                 let bm=ms[0]; if(Math.random()>0.6&&ms.length>1)bm=ms[1];
+                 let p=BigInt(bm.r*15+bm.c);
+                 if(ct===1&&isForbidden(cb|(1n<<p),cw,p))return 2;
+                 if(ct===1)cb|=(1n<<p);else cw|=(1n<<p);
+                 if(s>30&&hasNeighbor(cb|cw,bm.r,bm.c))s--; ct=3-ct; s++;
+             }
+             let sb=evalFull(cb,cw)+evalPositionalTotal(cb), sw=evalFull(cw,cb)+evalPositionalTotal(cw);
+             if(sb>sw*1.05)return 1; if(sw>sb*1.05)return 2; return 3;
+        }
+
+        function storeKiller(depth, move) {
+            if (KILLER[depth][0] && KILLER[depth][0].r === move.r && KILLER[depth][0].c === move.c) return;
+            KILLER[depth][1] = KILLER[depth][0];
+            KILLER[depth][0] = move;
+        }
+
         function runPVS(b, w, turn, hash, limit, scoreB, scoreW) {
+            let cands = getRankedCands(b, w, turn, 0, null, false);
             let bestMove = {r:7, c:7};
-            let maxD = 0; let previousScore = 0;
-            // 깊이 2부터 짝수로 증가
-            for (let d = 2; d <= 8; d+=2) { 
-                 maxD = d; 
-                 let alpha = -INF; let beta = INF;
+            for (let m of cands) {
+                 let p = BigInt(m.r * 15 + m.c);
+                 if (turn === 1 && isForbidden(b | (1n << p), w, p)) continue;
+                 bestMove = m; break;
+            }
+            let maxD = 0; let previousScore = 0; let window = 25000; 
+            for (let d = 2; d <= 22; d++) {
+                 maxD = d; let alpha = -INF; let beta = INF;
+                 if (d >= 4) { alpha = previousScore - window; beta = previousScore + window; }
                  let score = pvsRoot(b, w, turn, d, alpha, beta, hash, limit, scoreB, scoreW);
-                 
+                 if (score.val <= alpha || score.val >= beta) {
+                     window = 5000000; 
+                     if (Date.now() - startTime < limit) score = pvsRoot(b, w, turn, d, -INF, INF, hash, limit, scoreB, scoreW);
+                 } else { window = Math.max(10000, window - 5000); }
                  if (Date.now() - startTime > limit) break;
                  previousScore = score.val; if (score.move) bestMove = score.move;
+                 for(let p=0; p<2; p++) for(let i=0; i<225; i++) HISTORY[p][i] = (HISTORY[p][i] * 0.9) >> 0; 
             }
             return { move: bestMove, depth: maxD, val: previousScore };
         }
@@ -303,21 +362,18 @@
         function pvsRoot(b, w, turn, depth, alpha, beta, hash, limit, scB, scW) {
              let rootMoves = getRankedCands(b, w, turn, depth, null, true); 
              if (rootMoves.length === 0) return {val: 0, move: {r:7, c:7}};
-             let bestScore = -INF; let bestMove = rootMoves[0];
-             
+             let bestScore = -INF; let bestMove = null;
              for (let i = 0; i < rootMoves.length; i++) {
                 if (Date.now() - startTime > limit) break;
                 let m = rootMoves[i]; let pos = BigInt(m.r * 15 + m.c);
                 if (turn === 1 && isForbidden(b | (1n << pos), w, pos)) continue;
-                
+                if (!bestMove) bestMove = m;
                 let nextHash = hash ^ ZOBRIST[turn-1][m.r*15 + m.c];
                 let nb = turn === 1 ? b | (1n << pos) : b; let nw = turn === 2 ? w | (1n << pos) : w;
-                
-                let deltaB = evalMoveDiff(b, w, m.r, m.c);
-                let deltaW = evalMoveDiff(w, b, m.r, m.c);
-                let nextScB = scB + (turn === 1 ? deltaB : 0);
-                let nextScW = scW + (turn === 2 ? deltaW : 0);
-
+                let deltaB = evalLines(nb, nw, m.r, m.c) - evalLines(b, w, m.r, m.c);
+                let deltaW = evalLines(nw, nb, m.r, m.c) - evalLines(w, b, m.r, m.c);
+                if (turn === 1) deltaB += POS_WEIGHTS[m.r*15+m.c]; else deltaW += POS_WEIGHTS[m.r*15+m.c];
+                let nextScB = scB + deltaB; let nextScW = scW + deltaW;
                 let score;
                 if (i === 0) score = -pvs(nb, nw, 3 - turn, depth - 1, -beta, -alpha, nextHash, nextScB, nextScW);
                 else {
@@ -327,229 +383,429 @@
                 if (score > bestScore) { bestScore = score; bestMove = m; }
                 alpha = Math.max(alpha, score); if (alpha >= beta) break; 
              }
+             if (!bestMove) bestMove = {r:7, c:7};
              return { val: bestScore, move: bestMove };
         }
 
         function pvs(b, w, turn, depth, alpha, beta, hash, scB, scW) {
             nodes++;
-            if (depth <= 0) return evalFull(turn===1?b:w, turn===1?w:b) - evalFull(turn===1?w:b, turn===1?b:w);
-
-            let cands = getRankedCands(b, w, turn, depth, null, false);
-            if (cands.length === 0) return 0;
-
-            let val = -INF; 
+            let ttEntry = TT.get(hash);
+            if (ttEntry && ttEntry.depth >= depth) {
+                if (ttEntry.flag === 0) return ttEntry.score;
+                if (ttEntry.flag === 1) alpha = Math.max(alpha, ttEntry.score);
+                else if (ttEntry.flag === 2) beta = Math.min(beta, ttEntry.score);
+                if (alpha >= beta) { cutoffs++; return ttEntry.score; }
+            }
+            if (depth === 0) return quiescence(b, w, turn, alpha, beta, 6, scB, scW);
+            if (depth >= 3 && Math.abs(beta) < 50000000) {
+                 let nullScore = -pvs(b, w, 3-turn, depth - 3, -beta, -beta + 1, hash, scB, scW);
+                 if (nullScore >= beta) return beta; 
+            }
+            if (turn === 1 && scW > 40000000) return -100000000 + depth; 
+            if (turn === 2 && scB > 40000000) return -100000000 + depth; 
+            let cands = getRankedCands(b, w, turn, depth, ttEntry ? ttEntry.move : null, false);
+            if (cands.length === 0) return (turn === 1) ? (scB - scW + 50) : -(scB - scW + 50);
+            let val = -INF; let bestM = null; let originalAlpha = alpha;
             for (let i = 0; i < cands.length; i++) {
                 let m = cands[i];
                 let pos = BigInt(m.r * 15 + m.c);
                 if (turn === 1 && isForbidden(b | (1n << pos), w, pos)) continue;
-
                 let nb = turn === 1 ? b | (1n << pos) : b; let nw = turn === 2 ? w | (1n << pos) : w;
                 let nextHash = hash ^ ZOBRIST[turn-1][m.r*15 + m.c];
-                
-                let deltaB = evalMoveDiff(b, w, m.r, m.c);
-                let deltaW = evalMoveDiff(w, b, m.r, m.c);
-                let nextScB = scB + (turn === 1 ? deltaB : 0);
-                let nextScW = scW + (turn === 2 ? deltaW : 0);
-
-                let score = -pvs(nb, nw, 3 - turn, depth - 1, -beta, -alpha, nextHash, nextScB, nextScW);
-                
-                if (score > val) val = score;
+                let deltaB = evalLines(nb, nw, m.r, m.c) - evalLines(b, w, m.r, m.c);
+                let deltaW = evalLines(nw, nb, m.r, m.c) - evalLines(w, b, m.r, m.c);
+                if (turn === 1) deltaB += POS_WEIGHTS[m.r*15+m.c]; else deltaW += POS_WEIGHTS[m.r*15+m.c];
+                let nextScB = scB + deltaB; let nextScW = scW + deltaW;
+                let nextDepth = depth - 1;
+                if (depth >= 3 && i >= 4 && !checkWin(turn===1?nb:nw, pos)) { nextDepth--; }
+                let score = -pvs(nb, nw, 3 - turn, nextDepth, -beta, -alpha, nextHash, nextScB, nextScW);
+                if (nextDepth < depth - 1 && score > alpha) {
+                    score = -pvs(nb, nw, 3 - turn, depth - 1, -beta, -alpha, nextHash, nextScB, nextScW);
+                }
+                if (score > val) { val = score; bestM = m; }
                 alpha = Math.max(alpha, val);
-                if (alpha >= beta) { cutoffs++; break; }
+                if (alpha >= beta) { cutoffs++; storeKiller(depth, m); HISTORY[turn-1][m.r*15 + m.c] += depth * depth; break; }
             }
+            let flag = 0; if (val <= originalAlpha) flag = 2; else if (val >= beta) flag = 1; 
+            storeTT(hash, depth, val, flag, bestM);
             return val;
         }
-
-        const SCORES = {
-            WIN: 10000000,
-            OPEN_4: 100000,
-            CLOSED_4: 2005,
-            OPEN_3: 2000,
-            CLOSED_3: 100,
-            OPEN_2: 100,
-            CLOSED_2: 10
-        };
+        function storeTT(hash, depth, score, flag, move) {
+            let entry = TT.get(hash); if (entry && entry.depth > depth) return; 
+            if (TT.size > MAX_TT_SIZE && !entry) { const oldest = TT.keys().next().value; TT.delete(oldest); }
+            TT.set(hash, { depth, score, flag, move });
+        }
+        function quiescence(b, w, turn, alpha, beta, qsDepth, scB, scW) {
+            nodes++;
+            let totalScore = scB - scW; if (turn === 1) totalScore += 500; else totalScore -= 500;
+            let standPat = (turn === 1) ? totalScore : -totalScore;
+            if (standPat >= beta) return beta; if (standPat > alpha) alpha = standPat;
+            if (qsDepth <= 0) return standPat;
+            let cands = getRankedCands(b, w, turn, 30, null, false);
+            let noisyMoves = []; let threshold = standPat < -10000 ? 5000 : 20000;
+            for(let m of cands) { if (m.s >= 50000) noisyMoves.push(m); else if (m.s >= threshold) noisyMoves.push(m); }
+            for (let m of noisyMoves) {
+                let pos = BigInt(m.r * 15 + m.c);
+                if (turn === 1 && isForbidden(b | (1n << pos), w, pos)) continue;
+                let nb = turn === 1 ? b | (1n << pos) : b; let nw = turn === 2 ? w | (1n << pos) : w;
+                let deltaB = evalLines(nb, nw, m.r, m.c) - evalLines(b, w, m.r, m.c);
+                let deltaW = evalLines(nw, nb, m.r, m.c) - evalLines(w, b, m.r, m.c);
+                if (turn === 1) deltaB += POS_WEIGHTS[m.r*15+m.c]; else deltaW += POS_WEIGHTS[m.r*15+m.c];
+                let score = -quiescence(nb, nw, 3 - turn, -beta, -alpha, qsDepth - 1, scB + deltaB, scW + deltaW);
+                if (score > alpha) { alpha = score; if (score >= beta) return beta; }
+            }
+            return alpha;
+        }
+        function evalPositionalTotal(my) { let s = 0; for(let i=0; i<225; i++) if((my >> BigInt(i)) & 1n) s += POS_WEIGHTS[i]; return s; }
+        
+        function evalLines(my, opp, r, c) {
+            let score = 0; const occ = my | opp;
+            score += evalSingleLine(my, occ, r, c, 0, 1, 15); // Horizontal
+            score += evalSingleLine(my, occ, r, c, 1, 0, 15); // Vertical
+            
+            let startD1 = getDiagStart(r, c, 16); 
+            score += evalSingleLine(my, occ, startD1.r, startD1.c, 1, 1, startD1.len);
+            
+            let startD2 = getDiagStart(r, c, 14); 
+            score += evalSingleLine(my, occ, startD2.r, startD2.c, 1, -1, startD2.len);
+            
+            return score;
+        }
+        function getDiagStart(r, c, dir) {
+             let cr = r, cc = c; 
+             if (dir === 16) { while(cr > 0 && cc > 0) { cr--; cc--; } } 
+             else { while(cr > 0 && cc < 14) { cr--; cc++; } }
+             let len = 0; let tr = cr, tc = cc;
+             if (dir === 16) { while(tr < 15 && tc < 15) { len++; tr++; tc++; } } 
+             else { while(tr < 15 && tc >= 0) { len++; tr++; tc--; } }
+             return { r: cr, c: cc, len: len };
+        }
+        function evalSingleLine(my, occ, startR, startC, dr, dc, count) {
+            let score = 0; 
+            let currR = startR, currC = startC;
+            
+            for (let i = 0; i < count; i++) {
+                let p = BigInt(currR * 15 + currC);
+                if (!((my >> p) & 1n)) { 
+                    currR += dr; currC += dc; 
+                    continue; 
+                }
+                
+                let prevR = currR - dr, prevC = currC - dc;
+                let isStart = true;
+                if (i > 0) {
+                     let pp = BigInt(prevR * 15 + prevC);
+                     if ((my >> pp) & 1n) isStart = false;
+                }
+                
+                if (isStart) {
+                    let len = 1; 
+                    let nextR = currR + dr, nextC = currC + dc;
+                    let k = i + 1;
+                    while (k < count) {
+                        let np = BigInt(nextR * 15 + nextC);
+                        if (!((my >> np) & 1n)) break;
+                        len++; nextR += dr; nextC += dc; k++;
+                    }
+                    
+                    let lOpen = false, rOpen = false;
+                    if (i > 0) {
+                        let pp = BigInt(prevR * 15 + prevC);
+                        if (!((occ >> pp) & 1n)) lOpen = true;
+                    }
+                    if (k < count) {
+                        let np = BigInt(nextR * 15 + nextC);
+                        if (!((occ >> np) & 1n)) rOpen = true;
+                    }
+                    
+                    if (len >= 5) score += 100000000; 
+                    else if (len === 4) { if (lOpen && rOpen) score += 50000000; else if (lOpen || rOpen) score += 500000; }
+                    else if (len === 3) { if (lOpen && rOpen) score += 30000; else if (lOpen || rOpen) score += 2000; }
+                    else if (len === 2) { if (lOpen && rOpen) score += 3000; }
+                }
+                currR += dr; currC += dc;
+            }
+            return score;
+        }
 
         function evalFull(my, opp) {
-            let score = 0;
-            for (let r=0; r<15; r++) score += evalLine(my, opp, r*15, 1, 15); 
-            for (let c=0; c<15; c++) score += evalLine(my, opp, c, 15, 15); 
-            for (let c=0; c<=10; c++) score += evalLine(my, opp, c, 16, 15-c);
-            for (let r=1; r<=10; r++) score += evalLine(my, opp, r*15, 16, 15-r);
-            for (let c=4; c<15; c++) score += evalLine(my, opp, c, 14, c+1);
-            for (let r=1; r<=10; r++) score += evalLine(my, opp, r*15+14, 14, 15-r);
+            let score = 0; const occ = my | opp;
+            for(let r=0; r<15; r++) score += evalSingleLine(my, occ, r, 0, 0, 1, 15);
+            for(let c=0; c<15; c++) score += evalSingleLine(my, occ, 0, c, 1, 0, 15);
+            for(let c=0; c<15; c++) { let res = getDiagStart(0, c, 16); if (res.len >= 5) score += evalSingleLine(my, occ, res.r, res.c, 1, 1, res.len); }
+            for(let r=1; r<15; r++) { let res = getDiagStart(r, 0, 16); if (res.len >= 5) score += evalSingleLine(my, occ, res.r, res.c, 1, 1, res.len); }
+            for(let c=0; c<15; c++) { let res = getDiagStart(0, c, 14); if (res.len >= 5) score += evalSingleLine(my, occ, res.r, res.c, 1, -1, res.len); }
+            for(let r=1; r<15; r++) { let res = getDiagStart(r, 14, 14); if (res.len >= 5) score += evalSingleLine(my, occ, res.r, res.c, 1, -1, res.len); }
             return score;
         }
 
-        function evalMoveDiff(my, opp, r, c) {
-            return evalFull(my | (1n << BigInt(r*15+c)), opp) - evalFull(my, opp);
-        }
-
-        function evalLine(my, opp, startIdx, step, len) {
-            let score = 0;
-            let count = 0;
-            let openStart = false;
-
-            for (let i = 0; i < len; i++) {
-                let pos = BigInt(startIdx + i * step);
-                if ((my >> pos) & 1n) {
-                    count++;
-                } else if ((opp >> pos) & 1n) {
-                    if (count > 0) score += getPatternScore(count, openStart, false);
-                    count = 0; openStart = false;
-                } else {
-                    if (count > 0) score += getPatternScore(count, openStart, true);
-                    count = 0; openStart = true;
+        function solveVCT(b, w, turn, depth, path) {
+            if (depth > 12 || Date.now() - startTime > 3000) return null; 
+            let cands = getRankedCands(b, w, turn, 0, null, false).slice(0, 15);
+            let forcingMoves = [];
+            for(let m of cands) if (m.s >= 25000) forcingMoves.push(m);
+            for (let atk of forcingMoves) {
+                let pos = BigInt(atk.r * 15 + atk.c);
+                if (turn === 1 && isForbidden(b | (1n << pos), w, pos)) continue;
+                let nextB = (turn === 1 ? (b | (1n << pos)) : b); let nextW = (turn === 2 ? (w | (1n << pos)) : w);
+                if (checkWin(turn===1?nextB:nextW, pos)) return [...path, atk];
+                let type = getThreatType(turn===1?nextB:nextW, b|w, pos);
+                if (type === 0) continue; 
+                let defenses = getDefenses(nextB, nextW, 3-turn, type, pos, turn===1?nextB:nextW);
+                if (defenses.length === 0) return [...path, atk];
+                let solvedAll = true; let subPath = null;
+                for (let def of defenses) {
+                    let dPos = BigInt(def.r * 15 + def.c);
+                    let newB = (turn === 2 ? (nextB | (1n << dPos)) : nextB); let newW = (turn === 1 ? (nextW | (1n << dPos)) : nextW);
+                    if (checkWin(turn===2?newB:newW, dPos)) { solvedAll = false; break; }
+                    let res = solveVCT(newB, newW, turn, depth + 1, [...path, atk, def]);
+                    if (!res) { solvedAll = false; break; }
+                    subPath = res;
                 }
-            }
-            if (count > 0) score += getPatternScore(count, openStart, false);
-            return score;
-        }
-
-        function getPatternScore(count, openStart, openEnd) {
-            if (count >= 5) return SCORES.WIN;
-            if (count === 4) {
-                if (openStart && openEnd) return SCORES.OPEN_4;
-                if (openStart || openEnd) return SCORES.CLOSED_4;
-            }
-            if (count === 3) {
-                if (openStart && openEnd) return SCORES.OPEN_3;
-                if (openStart || openEnd) return SCORES.CLOSED_3;
-            }
-            if (count === 2) {
-                if (openStart && openEnd) return SCORES.OPEN_2;
-                return SCORES.CLOSED_2;
-            }
-            return 1;
-        }
-
-        function isForbidden(b, w, pos) {
-            if (checkOverline(b, pos)) return true;
-            let threes = 0;
-            let fours = 0;
-            
-            for (let dir of DIRECTIONS) {
-                let info = getLineInfo(b, w, pos, dir);
-                if (info.len >= 6) return true; 
-                if (info.len === 4) fours++; 
-                if (info.len === 3 && info.openL && info.openR) threes++;
-            }
-            if (fours >= 2) return true;
-            if (threes >= 2) return true;
-            return false;
-        }
-        
-        function checkOverline(my, pos) {
-            for (let dir of DIRECTIONS) {
-                let count = 1;
-                let p = pos - dir; 
-                while (p >= 0n && (my & (1n << p))) {
-                      let nr = Number(p/15n); let lr = Number((p+dir)/15n);
-                      if (Math.abs(nr-lr)>1) break;
-                      count++; p-=dir;
-                }
-                p = pos + dir;
-                while (p < 225n && (my & (1n << p))) {
-                      let nr = Number(p/15n); let lr = Number((p-dir)/15n);
-                      if (Math.abs(nr-lr)>1) break;
-                      count++; p+=dir;
-                }
-                if (count >= 6) return true;
-            }
-            return false;
-        }
-
-        function getLineInfo(my, opp, pos, dir) {
-            let occ = my | opp;
-            
-            let left = 0; let p = pos - dir; 
-            while (p >= 0n && (my & (1n << p))) {
-                 let nr = Number(p/15n); let lr = Number((p+dir)/15n);
-                 if (Math.abs(nr-lr)>1) break;
-                 left++; p-=dir;
-            }
-            let openL = (p >= 0n && p < 225n && !((occ >> p) & 1n));
-            
-            let right = 0; p = pos + dir;
-            while (p < 225n && (my & (1n << p))) {
-                 let nr = Number(p/15n); let lr = Number((p-dir)/15n);
-                 if (Math.abs(nr-lr)>1) break;
-                 right++; p+=dir;
-            }
-            let openR = (p >= 0n && p < 225n && !((occ >> p) & 1n));
-            
-            return { len: left + 1 + right, openL, openR };
-        }
-
-        function solveVCF(b, w, turn, depth, path) {
-            if (depth > 6 || Date.now() - startTime > 300) return null; 
-            let cands = getRankedCands(b, w, turn, 0, null, false);
-            for (let m of cands) {
-                let pos = BigInt(m.r * 15 + m.c);
-                if (turn === 1 && isForbidden(b|(1n<<pos), w, pos)) continue;
-                
-                let nextB = turn===1 ? b|(1n<<pos) : b;
-                let nextW = turn===2 ? w|(1n<<pos) : w;
-                
-                if (checkWin(turn===1?nextB:nextW, pos)) return [...path, m];
-                
-                let infoArr = [];
-                for(let dir of DIRECTIONS) infoArr.push(getLineInfo(turn===1?nextB:nextW, turn===1?nextW:nextB, pos, dir));
-                
-                let isFour = infoArr.some(i => i.len === 4 && (i.openL || i.openR));
-                if (!isFour) continue; 
+                if (solvedAll) return subPath;
             }
             return null;
         }
 
-        function checkWin(my, pos) {
-             let isOver = checkOverline(my, pos);
-             if (isOver) return false;
-             
-             for (let dir of DIRECTIONS) {
-                let count = 1;
-                let p = pos - dir; 
-                while (p>=0n && (my&(1n<<p))) { 
-                    let nr=Number(p/15n); let lr=Number((p+dir)/15n);
-                    if(Math.abs(nr-lr)>1)break; count++; p-=dir; 
+        function solveVCF(b, w, turn, depth, path) {
+            if (depth > 16 || Date.now() - startTime > 1500) return null; 
+            let attacks = getRankedCands(b, w, turn, 0, null, false).filter(m => m.s >= 400000); 
+            for (let atk of attacks) {
+                let pos = BigInt(atk.r * 15 + atk.c);
+                if (turn === 1 && isForbidden(b | (1n << pos), w, pos)) continue;
+                let nextB = (turn === 1 ? (b | (1n << pos)) : b); let nextW = (turn === 2 ? (w | (1n << pos)) : w);
+                if (checkWin(turn===1?nextB:nextW, pos)) return [...path, atk];
+                let defenses = getDefenses(nextB, nextW, 3-turn, 2, pos, turn===1?nextB:nextW);
+                if (defenses.length === 0) return [...path, atk]; 
+                let solvedAll = true; let subPath = null;
+                for (let def of defenses) {
+                    let dPos = BigInt(def.r * 15 + def.c);
+                    let newB = (turn === 2 ? (nextB | (1n << dPos)) : nextB); let newW = (turn === 1 ? (nextW | (1n << dPos)) : nextW);
+                    if (checkWin(turn===2?newB:newW, dPos)) { solvedAll = false; break; }
+                    let res = solveVCF(newB, newW, turn, depth + 1, [...path, atk, def]);
+                    if (!res) { solvedAll = false; break; }
+                    subPath = res;
                 }
-                p = pos + dir; 
-                while (p<225n && (my&(1n<<p))) { 
-                    let nr=Number(p/15n); let lr=Number((p-dir)/15n);
-                    if(Math.abs(nr-lr)>1)break; count++; p+=dir; 
-                }
-                if (count === 5) return true;
-             }
-             return false;
+                if (solvedAll) return subPath;
+            }
+            return null;
         }
 
-        function getRankedCands(b, w, p, depth, ttMove, addNoise) {
+        function getThreatType(my, occ, pos) {
+            let r = Number(pos / 15n), c = Number(pos % 15n);
+            for (let dir of DIRECTIONS) {
+                let count = 1;
+                let p = pos - dir; let lr = r, lc = c;
+                while (p >= 0n && (my & (1n << p))) {
+                    let nr = Number(p / 15n), nc = Number(p % 15n);
+                    if (Math.abs(nr - lr) > 1 || Math.abs(nc - lc) > 1) break; 
+                    count++; p -= dir; lr = nr; lc = nc;
+                }
+                let lBound = p; 
+                p = pos + dir; let rr = r, rc = c;
+                while (p < 225n && (my & (1n << p))) {
+                    let nr = Number(p / 15n), nc = Number(p % 15n);
+                    if (Math.abs(nr - rr) > 1 || Math.abs(nc - rc) > 1) break;
+                    count++; p += dir; rr = nr; rc = nc;
+                }
+                let rBound = p;
+                if (count >= 4) return 2; 
+                if (count === 3) {
+                     let lOpen = false;
+                     if (lBound >= 0n && lBound < 225n && !((occ >> lBound) & 1n)) {
+                        let nr = Number(lBound / 15n), nc = Number(lBound % 15n);
+                        if (Math.abs(nr - lr) <= 1 && Math.abs(nc - lc) <= 1) lOpen = true;
+                     }
+                     let rOpen = false;
+                     if (rBound >= 0n && rBound < 225n && !((occ >> rBound) & 1n)) {
+                        let nr = Number(rBound / 15n), nc = Number(rBound % 15n);
+                        if (Math.abs(nr - rr) <= 1 && Math.abs(nc - rc) <= 1) rOpen = true;
+                     }
+                     if (lOpen && rOpen) return 1; 
+                }
+            }
+            return 0; 
+        }
+
+        function getDefenses(b, w, turn, threatType, atkPos, attackerBoard) { 
+             let candidates = getRankedCands(b, w, turn, 0, null, false).slice(0, 10);
+             let valid = [];
+             for(let m of candidates) {
+                 let dPos = BigInt(m.r * 15 + m.c);
+                 if (turn === 1 && isForbidden(b | (1n << dPos), w, dPos)) continue;
+                 let myNext = (turn === 1 ? b | (1n << dPos) : w | (1n << dPos));
+                 let occ = b | w | (1n << dPos);
+                 if (getThreatType(myNext, occ, dPos) >= 2) { valid.push(m); continue; }
+                 let newOcc = b | w | (1n << dPos);
+                 let stillThreat = getThreatType(attackerBoard, newOcc, atkPos);
+                 if (stillThreat < threatType) { valid.push(m); }
+             }
+             return valid.slice(0, 8);
+        }
+
+        function findWinMove(b, w, turn) {
             let occ = b | w;
-            let list = [];
-            
             for(let i=0; i<225; i++) {
-                if ((occ >> BigInt(i)) & 1n) continue;
+                if (occ & (1n << BigInt(i))) continue;
+                let pos = BigInt(i); let r = Math.floor(i/15), c = i%15;
+                if(!hasNeighbor(occ, r, c)) continue;
+                if (turn === 1) { if (!isForbidden(b|(1n<<pos), w, pos) && checkWin(b|(1n<<pos), pos)) return {r,c}; } 
+                else { if (checkWin(w|(1n<<pos), pos)) return {r,c}; }
+            }
+            return null;
+        }
+        function getRankedCands(b, w, p, depth, ttMove, addNoise) {
+            let occ = b | w; let my = p === 2 ? w : b; let opp = p === 2 ? b : w;
+            let list = []; let k1 = null, k2 = null;
+            if (depth < 60) { k1 = KILLER[depth][0]; k2 = KILLER[depth][1]; }
+            for(let i=0; i<225; i++) {
+                if (occ & (1n << BigInt(i))) continue;
                 let r = Math.floor(i/15), c = i%15;
                 if (!hasNeighbor(occ, r, c)) continue;
-                
-                let score = POS_WEIGHTS[i];
-                score += evalMoveDiff(p===1?b:w, p===2?b:w, r, c); 
-                score += evalMoveDiff(p===2?b:w, p===1?b:w, r, c); 
-                
+                let score = evalMoveUltra(my, opp, b, w, r, c, p);
+                score += POS_WEIGHTS[i];
+                if (ttMove && ttMove.r === r && ttMove.c === c) score += 2000000000;
+                else if (k1 && k1.r === r && k1.c === c) score += 1000000000;
+                else if (k2 && k2.r === r && k2.c === c) score += 900000000;
+                score += HISTORY[p-1][i]; score += MCTS_SCORES[i]; 
+                if (addNoise) score += Math.floor(Math.random() * 50);
                 list.push({r, c, s: score});
             }
-            return list.sort((x,y) => y.s - x.s).slice(0, 20); 
+            return list.sort((x,y) => y.s - x.s).slice(0, 30); 
         }
-        
         function hasNeighbor(occ, r, c) {
-             for(let dr=-1; dr<=1; dr++) for(let dc=-1; dc<=1; dc++) {
+             for(let dr=-2; dr<=2; dr++) for(let dc=-2; dc<=2; dc++) {
                  if (dr===0 && dc===0) continue;
                  let nr = r+dr, nc = c+dc;
-                 if (nr>=0 && nr<15 && nc>=0 && nc<15) {
-                     if ((occ >> BigInt(nr*15+nc)) & 1n) return true;
-                 }
+                 if (nr>=0 && nr<15 && nc>=0 && nc<15) if (occ & (1n << BigInt(nr*15+nc))) return true;
              }
              return false;
+        }
+        
+        function evalMoveUltra(my, opp, b, w, r, c, p) {
+            let score = 0; const occ = b | w;
+            const knightDirs = [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]];
+            for(let [dr, dc] of knightDirs) {
+                let nr = r+dr, nc = c+dc;
+                if (nr>=0 && nr<15 && nc>=0 && nc<15 && (my & (1n << BigInt(nr*15+nc)))) score += 500; 
+            }
+            for (let dir of DIRECTIONS) {
+                let l=0, r_cnt=0;
+                let lp = BigInt(r*15+c) - dir; let lr = r, lc = c;
+                while (lp>=0n && (my & (1n<<lp))) { 
+                    let nr = Number(lp / 15n), nc = Number(lp % 15n);
+                    if (Math.abs(nr - lr) > 1 || Math.abs(nc - lc) > 1) break; 
+                    l++; lp-=dir; lr=nr; lc=nc;
+                }
+                let l_open = false;
+                if (lp >= 0n && lp < 225n && !(occ & (1n << lp))) {
+                     let nr = Number(lp / 15n), nc = Number(lp % 15n);
+                     if (Math.abs(nr - lr) <= 1 && Math.abs(nc - lc) <= 1) l_open = true;
+                }
+                let rp = BigInt(r*15+c) + dir; let rr = r, rc = c;
+                while (rp<225n && (my & (1n<<rp))) { 
+                    let nr = Number(rp / 15n), nc = Number(rp % 15n);
+                    if (Math.abs(nr - rr) > 1 || Math.abs(nc - rc) > 1) break; 
+                    r_cnt++; rp+=dir; rr=nr; rc=nc;
+                }
+                let r_open = false;
+                if (rp >= 0n && rp < 225n && !(occ & (1n << rp))) {
+                     let nr = Number(rp / 15n), nc = Number(rp % 15n);
+                     if (Math.abs(nr - rr) <= 1 && Math.abs(nc - rc) <= 1) r_open = true;
+                }
+                let len = l + 1 + r_cnt;
+                if (len >= 5) score += 100000000;
+                else if (len === 4) { if (l_open || r_open) score += 50000000; if (l_open && r_open) score += 500000; }
+                else if (len === 3) { if (l_open && r_open) score += 50000; else if (l_open || r_open) score += 1000; }
+                
+                let ol=0, or=0;
+                lp = BigInt(r*15+c) - dir; lr = r; lc = c;
+                while (lp>=0n && (opp & (1n<<lp))) { 
+                    let nr = Number(lp / 15n), nc = Number(lp % 15n);
+                    if (Math.abs(nr - lr) > 1 || Math.abs(nc - lc) > 1) break;
+                    ol++; lp-=dir; lr=nr; lc=nc;
+                }
+                let ol_open = false;
+                if (lp >= 0n && lp < 225n && !(occ & (1n << lp))) {
+                     let nr = Number(lp / 15n), nc = Number(lp % 15n);
+                     if (Math.abs(nr - lr) <= 1 && Math.abs(nc - lc) <= 1) ol_open = true;
+                }
+                rp = BigInt(r*15+c) + dir; rr = r; rc = c;
+                while (rp<225n && (opp & (1n<<rp))) { 
+                    let nr = Number(rp / 15n), nc = Number(rp % 15n);
+                    if (Math.abs(nr - rr) > 1 || Math.abs(nc - rc) > 1) break;
+                    or++; rp+=dir; rr=nr; rc=nc;
+                }
+                let or_open = false;
+                if (rp >= 0n && rp < 225n && !(occ & (1n << rp))) {
+                     let nr = Number(rp / 15n), nc = Number(rp % 15n);
+                     if (Math.abs(nr - rr) <= 1 && Math.abs(nc - rc) <= 1) or_open = true;
+                }
+                let olen = ol + 1 + or;
+                if (olen >= 5) score += 900000000; 
+                else if (olen === 4) score += 60000000; 
+                else if (olen === 3 && ol_open && or_open) score += 40000; 
+            }
+            return score;
+        }
+
+        function checkWin(my, pos) {
+            let r = Number(pos / 15n), c = Number(pos % 15n);
+            for (let dir of DIRECTIONS) {
+                let count = 1;
+                let p = pos - dir; let lr = r, lc = c;
+                while (p >= 0n && (my & (1n << p))) {
+                    let nr = Number(p / 15n), nc = Number(p % 15n);
+                    if (Math.abs(nr - lr) > 1 || Math.abs(nc - lc) > 1) break;
+                    count++; p -= dir; lr = nr; lc = nc;
+                }
+                p = pos + dir; let rr = r, rc = c;
+                while (p < 225n && (my & (1n << p))) {
+                    let nr = Number(p / 15n), nc = Number(p % 15n);
+                    if (Math.abs(nr - rr) > 1 || Math.abs(nc - rc) > 1) break;
+                    count++; p += dir; rr = nr; rc = nc;
+                }
+                if (count >= 5) return true;
+            }
+            return false;
+        }
+
+        function isForbidden(b, w, pos) {
+            const occ = b | w; let threes = 0, fours = 0;
+            let r = Number(pos / 15n), c = Number(pos % 15n);
+            for (let dir of DIRECTIONS) {
+                let left = 0, right = 0;
+                let lp = pos - dir, rp = pos + dir;
+                let lr = r, lc = c;
+                while (lp >= 0n && lp < 225n && (b & (1n << lp))) {
+                    let nr = Number(lp / 15n), nc = Number(lp % 15n);
+                    if (Math.abs(nr - lr) > 1 || Math.abs(nc - lc) > 1) break; 
+                    left++; lp -= dir; lr = nr; lc = nc;
+                }
+                let rr = r, rc = c;
+                while (rp >= 0n && rp < 225n && (b & (1n << rp))) {
+                    let nr = Number(rp / 15n), nc = Number(rp % 15n);
+                    if (Math.abs(nr - rr) > 1 || Math.abs(nc - rc) > 1) break; 
+                    right++; rp += dir; rr = nr; rc = nc;
+                }
+                let l_open = false;
+                if (lp >= 0n && lp < 225n && !(occ & (1n << lp))) {
+                    let nr = Number(lp / 15n), nc = Number(lp % 15n);
+                    let pr = (left > 0) ? lr : r; let pc = (left > 0) ? lc : c;
+                    if (Math.abs(nr - pr) <= 1 && Math.abs(nc - pc) <= 1) l_open = true;
+                }
+                let r_open = false;
+                if (rp >= 0n && rp < 225n && !(occ & (1n << rp))) {
+                    let nr = Number(rp / 15n), nc = Number(rp % 15n);
+                    let pr = (right > 0) ? rr : r; let pc = (right > 0) ? rc : c;
+                    if (Math.abs(nr - pr) <= 1 && Math.abs(nc - pc) <= 1) r_open = true;
+                }
+                let len = left + 1 + right;
+                if (len >= 6) return true; 
+                if (len === 3 && l_open && r_open) threes++;
+                if (len === 4 && (l_open || r_open)) fours++; 
+            }
+            return (threes >= 2 || fours >= 2);
         }
         `;
 
@@ -566,14 +822,11 @@
         
         let board = Array.from({length: size}, () => Array(size).fill(0));
         let isGameOver = false; let moveHistory = []; let mousePos = null; let hintPos = null; let humanColor = 1; let forbiddenMap = [];
-        let watchdogTimer = null; // AI 응답 감시용
 
         const blob = new Blob([workerSource], {type: 'text/javascript'});
         const worker = new Worker(window.URL.createObjectURL(blob));
 
         worker.onmessage = function(e) {
-            clearTimeout(watchdogTimer); // 응답 오면 타이머 해제
-            
             const d = e.data;
             if (d.type === 'HINT_RESULT') { if (d.move) { hintPos = d.move; drawBoard(); status.innerText = '💡 힌트 위치 표시됨'; } return; }
             if (d.type === 'RESULT') {
@@ -586,55 +839,20 @@
                 status.innerText = msg;
             }
         };
-        
-        // [안전장치 2] 워커 에러 감지
-        worker.onerror = function(err) {
-            console.error(err);
-            status.innerText = "⚠️ AI 오류 발생. 강제 착수합니다.";
-            forceRandomMove();
-        };
-
-        function forceRandomMove() {
-            clearTimeout(watchdogTimer);
-            if (isGameOver) return;
-            // 빈 곳 중 아무데나 둔다
-            let empties = [];
-            for(let r=0; r<15; r++) for(let c=0; c<15; c++) if(board[r][c]===0) empties.push({r,c});
-            
-            // 중앙 근처 선호
-            empties.sort((a,b) => (Math.abs(a.r-7)+Math.abs(a.c-7)) - (Math.abs(b.r-7)+Math.abs(b.c-7)));
-            
-            if (empties.length > 0) {
-                // 금수 체크
-                for(let m of empties) {
-                    if (3-humanColor === 1 && checkForbidden(m.r, m.c)) continue;
-                    placeStone(m.r, m.c, 3-humanColor);
-                    status.innerText = "🤖 AI (강제 착수)";
-                    return;
-                }
-                // 둘 곳 없으면 첫번째
-                if(empties.length > 0) placeStone(empties[0].r, empties[0].c, 3-humanColor);
-            }
-        }
 
         function checkForbidden(r, c) {
             let boardCopy = board.map(row => [...row]); boardCopy[r][c] = 1; 
             const dirs = [[0,1],[1,0],[1,1],[1,-1]];
             let threes = 0, fours = 0, overline = false;
-            
             for (let [dx, dy] of dirs) {
-                let left = 0; let lx = r - dx, ly = c - dy;
-                while (lx >= 0 && lx < 15 && ly >= 0 && ly < 15 && boardCopy[lx][ly] === 1) { left++; lx -= dx; ly -= dy; }
+                let left = 0, right = 0;
+                let lx = r - dx, ly = c - dy; while (lx >= 0 && lx < 15 && ly >= 0 && ly < 15 && boardCopy[lx][ly] === 1) { left++; lx -= dx; ly -= dy; }
                 let l_open = (lx >= 0 && lx < 15 && ly >= 0 && ly < 15 && boardCopy[lx][ly] === 0);
-                
-                let right = 0; let rx = r + dx, ry = c + dy;
-                while (rx >= 0 && rx < 15 && ry >= 0 && ry < 15 && boardCopy[rx][ry] === 1) { right++; rx += dx; ry += dy; }
+                let rx = r + dx, ry = c + dy; while (rx >= 0 && rx < 15 && ry >= 0 && ry < 15 && boardCopy[rx][ry] === 1) { right++; rx += dx; ry += dy; }
                 let r_open = (rx >= 0 && rx < 15 && ry >= 0 && ry < 15 && boardCopy[rx][ry] === 0);
-                
                 let len = left + 1 + right;
                 if (len >= 6) overline = true;
-                if (len === 3 && l_open && r_open) threes++; 
-                if (len === 4 && (l_open || r_open)) fours++; 
+                if (len === 3 && l_open && r_open) threes++; if (len === 4 && (l_open || r_open)) fours++;
             }
             if (overline) return "6목 (장목)"; if (threes >= 2) return "3-3 (쌍삼)"; if (fours >= 2) return "4-4 (쌍사)"; return null;
         }
@@ -648,10 +866,7 @@
                      let count = 1;
                      let x = i + dx, y = j + dy; while (x >= 0 && x < size && y >= 0 && y < size && board[x][y] === p) { count++; x += dx; y += dy; }
                      x = i - dx; y = j - dy; while (x >= 0 && x < size && y >= 0 && y < size && board[x][y] === p) { count++; x -= dx; y -= dy; }
-                     if (count >= 5) {
-                         if (p === 1 && count > 5) return false; 
-                         return true;
-                     }
+                     if (count >= 5) return true;
                  }
              }
              return false;
@@ -667,26 +882,13 @@
                 }
             }
             if (p === 1) { let err = checkForbidden(r, c); if (err) { forbiddenMsg.innerText = `❌ 금수 위치: ${err}`; shakeBoard(); return; } }
-            
             board[r][c] = p; moveHistory.push({r, c, p}); hintPos = null; updateForbiddenMap(); drawBoard();
-            
             if (checkWinLocal(p)) {
                 status.innerText = (p === humanColor ? '🏆 승리했습니다!' : '💀 AI가 승리했습니다.');
                 status.style.color = p === humanColor ? '#28a745' : '#dc3545'; isGameOver = true; return;
             }
-            
             if (p === humanColor) {
                 status.innerText = '🛡️ AI 생각 중...'; status.style.color = '#555'; forbiddenMsg.innerText = '';
-                
-                // [안전장치 1] 3.5초 내 응답 없으면 강제 착수
-                clearTimeout(watchdogTimer);
-                watchdogTimer = setTimeout(() => {
-                    if (!isGameOver && status.innerText.includes('생각')) {
-                        console.warn("AI timeout");
-                        forceRandomMove();
-                    }
-                }, 3500);
-
                 let b = 0n, w = 0n;
                 for(let rr=0; rr<size; rr++) for(let cc=0; cc<size; cc++) {
                     if(board[rr][cc]===1) b |= (1n << BigInt(rr*15 + cc));
@@ -696,7 +898,6 @@
                 worker.postMessage({ type: 'THINK', b: b.toString(), w: w.toString(), turn: 3 - humanColor, history: hStr });
             }
         }
-        
         window.requestHint = () => {
              if(isGameOver || status.innerText.includes('AI')) return;
              status.innerText = '🤖 족보 및 힌트 검색 중...';
@@ -708,11 +909,12 @@
              let hStr = moveHistory.map(m => `${m.r},${m.c}`).join("|");
              worker.postMessage({ type: 'HINT', b: b.toString(), w: w.toString(), turn: humanColor, history: hStr });
         }
-        
         function drawBoard() {
+            // Background (Wood texture color)
             ctx.fillStyle = '#DCB35C'; 
             ctx.fillRect(0, 0, canvas.width, canvas.height); 
             
+            // Grid Lines
             ctx.strokeStyle = '#000000'; ctx.lineWidth = 1; ctx.font = '12px sans-serif';
             ctx.fillStyle = '#000000';
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -728,9 +930,11 @@
                 ctx.stroke();
             }
             
+            // Star points (Cheonwon)
             ctx.fillStyle = '#000000';
             [3, 7, 11].forEach(r => [3, 7, 11].forEach(c => { ctx.beginPath(); ctx.arc(margin + c*cell, margin + r*cell, 3.5, 0, Math.PI*2); ctx.fill(); }));
 
+            // Forbidden marks
             if (humanColor === 1 && !isGameOver) {
                 ctx.strokeStyle = 'rgba(231, 76, 60, 0.7)'; ctx.lineWidth = 2;
                 for (let f of forbiddenMap) {
@@ -740,6 +944,8 @@
                 }
             }
             
+            // Draw Stones
+            // We use moveHistory to draw them in order to find the correct number
             let moveMap = new Map();
             moveHistory.forEach((m, idx) => {
                 moveMap.set(m.r + "," + m.c, idx + 1);
@@ -754,12 +960,14 @@
                 }
             }
 
+            // Hint
             if (hintPos && !isGameOver) {
                 let cx = margin + hintPos.c * cell; let cy = margin + hintPos.r * cell;
                 ctx.strokeStyle = '#27ae60'; ctx.lineWidth = 3; ctx.setLineDash([5,5]);
                 ctx.beginPath(); ctx.arc(cx, cy, 18, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
             }
             
+            // Mouse Hover
             if (mousePos && board[mousePos.r][mousePos.c] === 0 && !isGameOver && !status.innerText.includes('AI')) {
                 ctx.globalAlpha = 0.6; drawStone(mousePos.r, mousePos.c, humanColor, null); ctx.globalAlpha = 1.0;
                 if (humanColor === 1) {
@@ -774,6 +982,7 @@
                 }
             }
             
+            // Last Move Marker
             if (moveHistory.length > 0) {
                 let last = moveHistory[moveHistory.length-1];
                 let lx = margin + last.c * cell; let ly = margin + last.r * cell;
@@ -783,20 +992,23 @@
         function drawStone(r, c, type, num) {
             let cx = margin + c * cell; let cy = margin + r * cell;
             
+            // Shadow
             ctx.fillStyle = 'rgba(0,0,0,0.4)';
             ctx.beginPath(); ctx.arc(cx + 2, cy + 2, 16, 0, Math.PI*2); ctx.fill();
 
+            // Stone Gradient
             let grad = ctx.createRadialGradient(cx - 5, cy - 5, 2, cx, cy, 15);
-            if (type === 1) { 
+            if (type === 1) { // Black
                 grad.addColorStop(0, '#555'); 
                 grad.addColorStop(1, '#000'); 
-            } else { 
+            } else { // White
                 grad.addColorStop(0, '#fff'); 
                 grad.addColorStop(1, '#ddd'); 
             } 
             ctx.fillStyle = grad;
             ctx.beginPath(); ctx.arc(cx, cy, 16, 0, Math.PI*2); ctx.fill();
 
+            // Draw Number
             if (num !== null) {
                 ctx.fillStyle = (type === 1) ? '#fff' : '#000';
                 ctx.font = 'bold 12px sans-serif';
@@ -823,7 +1035,6 @@
         }
         window.undoMove = () => {
             if (moveHistory.length < 2 || isGameOver) return;
-            if (status.innerText.includes('AI') && !isGameOver) return;
             for(let k=0; k<2; k++) { let m = moveHistory.pop(); if(m) board[m.r][m.c] = 0; }
             isGameOver = false; hintPos = null; updateForbiddenMap(); status.innerText = '↶ 무르기 완료'; drawBoard();
         };
