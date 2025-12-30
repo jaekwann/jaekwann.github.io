@@ -518,10 +518,30 @@
                         if (!((occ >> np) & 1n)) rOpen = true;
                     }
                     
-                    if (len >= 5) score += 100000000; 
-                    else if (len === 4) { if (lOpen && rOpen) score += 50000000; else if (lOpen || rOpen) score += 20000000; }
-                    else if (len === 3) { if (lOpen && rOpen) score += 30000; else if (lOpen || rOpen) score += 2000; }
-                    else if (len === 2) { if (lOpen && rOpen) score += 3000; }
+          
+
+if (len >= 5) score += 100000000; // 1억 (승리)
+
+else if (len === 4) { 
+  
+    if (lOpen && rOpen) score += 50000000; 
+    
+    else if (lOpen || rOpen) score += 15000000; 
+}
+
+else if (len === 3) { 
+
+   
+    if (lOpen && rOpen) score += 2000000; 
+    
+    
+    else if (lOpen || rOpen) score += 100000; 
+}
+
+else if (len === 2) { 
+    if (lOpen && rOpen) score += 20000; 
+    else if (lOpen || rOpen) score += 1000; 
+}
                 }
                 currR += dr; currC += dc;
             }
