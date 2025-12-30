@@ -734,9 +734,26 @@ else if (len === 2) {
                      if (Math.abs(nr - rr) <= 1 && Math.abs(nc - rc) <= 1) r_open = true;
                 }
                 let len = l + 1 + r_cnt;
-                if (len >= 5) score += 100000000;
-                else if (len === 4) { if (l_open || r_open) score += 50000000; if (l_open && r_open) score += 500000; }
-                else if (len === 3) { if (l_open && r_open) score += 50000; else if (l_open || r_open) score += 1000; }
+if (len >= 5) score += 100000000; // 승리
+else if (len === 4) { 
+    if (l_open || r_open) score += 50000000; // 공격 4 (개방형)
+    if (l_open && r_open) score += 500000; 
+}
+else if (len === 3) { 
+    if (l_open && r_open) score += 2000000; // 공격 3 (개방형) - 가중치 대폭 상향!
+    else if (l_open || r_open) score += 50000; 
+}
+
+// ... (중간 생략) ...
+
+
+let olen = ol + 1 + or;
+if (olen >= 5) score += 900000000;
+else if (olen === 4) {
+    score += 60000000; 
+} 
+else if (olen === 3 && ol_open && or_open) {
+    score += 1500000; 
                 
                 let ol=0, or=0;
                 lp = BigInt(r*15+c) - dir; lr = r; lc = c;
