@@ -519,7 +519,7 @@
                     }
                     
                     if (len >= 5) score += 100000000; 
-                    else if (len === 4) { if (lOpen && rOpen) score += 50000000; else if (lOpen || rOpen) score += 500000; }
+                    else if (len === 4) { if (lOpen && rOpen) score += 50000000; else if (lOpen || rOpen) score += 20000000; }
                     else if (len === 3) { if (lOpen && rOpen) score += 30000; else if (lOpen || rOpen) score += 2000; }
                     else if (len === 2) { if (lOpen && rOpen) score += 3000; }
                 }
