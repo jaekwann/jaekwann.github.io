@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Simple Renju</title>
+<title>Simple Renju (Fixed)</title>
 <style>
     body {
         background-color: #f0f0f0;
@@ -114,28 +114,27 @@
         <div class="btn-group">
             <button class="btn-swap" onclick="swapSides()">🔄 흑백 교환</button>
             <button class="btn-reset" onclick="resetVoid()">🚀 새 게임</button>
-            <button class="btn-undo" disabled style="background:#ccc; cursor:not-allowed;">↶ 무르기</button>
-            <button class="btn-hint" disabled style="background:#ccc; cursor:not-allowed;">💡힌트</button>
+            <button class="btn-undo" onclick="undoMove()">↶ 무르기</button>
+            <button class="btn-hint" onclick="requestHint()">💡힌트</button>
         </div>
     </div>
 
     <script>
     (function() {
-        // [AI LOGIC PART - FIXED AND OPTIMIZED]
+        // [AI LOGIC PART - FIXED]
         const workerSource = `
         const INF = 1000000000; 
         let nodes = 0; let mctsSims = 0; let startTime = 0;
-        const TIME_LIMIT = 4000; 
-        const MAX_TT_SIZE = 5000000; 
+        let cutoffs = 0; // [FIX 1] cutoffs 변수 선언 추가 (멈춤 원인 해결)
+        const TIME_LIMIT = 3000; 
         
-        // 오프닝 북 (주요 정석)
         const BOOK = {
             "7,7|6,8|6,6": {r:5, c:7}, "7,7|6,8|6,6|5,7": {r:5, c:8}, 
-            "7,7|6,6|8,6": {r:5, c:5}, "7,7|6,6|8,8": {r:5, c:5},       
+            "7,7|6,6|8,6": {r:5, c:5}, "7,7|6,6|8,8": {r:5, c:5},        
             "7,7|7,8|6,8": {r:5, c:7}, "7,7|7,8|6,8|5,7": {r:5, c:8},
             "7,7|5,6|4,5": {r:3, c:6}, "7,7|6,9|5,10": {r:4, c:9},      
             "7,7|9,6|10,5": {r:8, c:4}, "7,7|5,8|4,9": {r:3, c:8},      
-            "7,7|6,7|6,6": {r:5, c:5}, "7,7|8,7|8,6": {r:9, c:5},       
+            "7,7|6,7|6,6": {r:5, c:5}, "7,7|8,7|8,6": {r:9, c:5},        
             "7,7|8,7|8,6|9,5": {r:7, c:5}, "7,7|7,5|6,4": {r:5, c:5},        
             "7,7|5,7|4,6": {r:3, c:7}, "7,7|5,7|4,6|3,7": {r:5, c:5},
             "7,7|5,7|4,6|3,7|5,5": {r:6, c:5}, "7,7|7,9|6,10": {r:5, c:9},      
@@ -174,7 +173,7 @@
         const POS_WEIGHTS = new Int32Array(225);
         for(let r=0; r<15; r++) for(let c=0; c<15; c++) {
             let d = Math.sqrt((r-7)*(r-7) + (c-7)*(c-7));
-            POS_WEIGHTS[r*15+c] = Math.round(10 - d); // 중앙 선호
+            POS_WEIGHTS[r*15+c] = Math.round(10 - d); 
         }
         const ZOBRIST = [new BigUint64Array(225), new BigUint64Array(225)];
         {
@@ -182,24 +181,19 @@
             function rand() { seed = (seed * 6364136223846793005n + 1442695040888963407n); return seed; }
             for(let p=0; p<2; p++) for(let i=0; i<225; i++) ZOBRIST[p][i] = rand();
         }
-        let TT = new Map();
-        let KILLER = Array.from({length: 60}, () => [null, null]);
-        let HISTORY = [new Int32Array(225), new Int32Array(225)];
+        
         const DIRECTIONS = [1n, 15n, 16n, 14n]; 
         
         self.onmessage = function(e) {
             const d = e.data; 
             try {
                 if (d.type === 'RESET') { 
-                    TT.clear(); KILLER = Array.from({length: 60}, () => [null, null]);
-                    HISTORY = [new Int32Array(225), new Int32Array(225)];
                     return; 
                 }
                 
                 const b = BigInt(d.b); const w = BigInt(d.w); const turn = d.turn;
                 let currentHash = computeHash(b, w);
                 
-                // 기본 평가
                 let initScoreB = evalFull(b, w);
                 let initScoreW = evalFull(w, b);
 
@@ -213,7 +207,6 @@
                             self.postMessage({ type: 'HINT_RESULT', move: bookMove }); return; 
                         }
                     }
-                    // 힌트는 빠르게 계산
                     const res = runPVS(b, w, turn, currentHash, 800, initScoreB, initScoreW); 
                     self.postMessage({ type: 'HINT_RESULT', move: res.move });
                     return;
@@ -231,27 +224,41 @@
                          }
                     }
                     
-                    // VCF (Victory by Continuous Fours) - 필승 찾기
                     let winSeq = solveVCF(b, w, turn, 0, []);
                     if (winSeq) { self.postMessage({ type: 'RESULT', move: winSeq[0], nodes, cutoffs, mcts: 0, time: Date.now()-startTime, depth: 'VCF', note: 'CHECKMATE' }); return; }
                     
-                    // PVS (Principal Variation Search)
                     const result = runPVS(b, w, turn, currentHash, TIME_LIMIT, initScoreB, initScoreW);
                     if (!result || !result.move) throw "No move found";
                     self.postMessage({ type: 'RESULT', move: result.move, nodes, cutoffs, mcts: 0, score: result.val, time: Date.now() - startTime, depth: result.depth, note: 'THINKING' });
                 }
             } catch (err) {
-                // 에러 발생 시 fallback (빈 곳 중 점수 높은 곳)
+                // [FIX 2] 에러 발생 시 안전한 빈 곳을 확실하게 찾도록 수정
                 const fb_b = BigInt(e.data.b); const fb_w = BigInt(e.data.w);
                 let fallbackMoves = getRankedCands(fb_b, fb_w, e.data.turn, 0, null, true);
-                let safeMove = {r:7, c:7};
+                let safeMove = null;
+                
+                // 1순위: 평가 점수 높은 곳
                 for (let m of fallbackMoves) {
                     let p = BigInt(m.r * 15 + m.c);
                     if (e.data.turn === 1 && isForbidden(fb_b | (1n << p), fb_w, p)) continue;
                     safeMove = m; break;
                 }
+                
+                // 2순위: 어떻게든 빈 곳 찾기 (완전 랜덤)
+                if (!safeMove) {
+                    let empties = [];
+                    for(let r=0; r<15; r++) for(let c=0; c<15; c++) {
+                        let p = BigInt(r*15+c);
+                        if (!((fb_b|fb_w) & (1n << p))) {
+                             if (e.data.turn === 1 && isForbidden(fb_b | (1n << p), fb_w, p)) continue;
+                             empties.push({r,c});
+                        }
+                    }
+                    if (empties.length > 0) safeMove = empties[Math.floor(Math.random() * empties.length)];
+                }
+                
                 if (d.type === 'HINT') { self.postMessage({ type: 'HINT_RESULT', move: safeMove }); } 
-                else { self.postMessage({ type: 'RESULT', move: safeMove, nodes: nodes, cutoffs: 0, mcts: 0, score: 0, time: 0, depth: 'ERR', note: 'RECOVERY' }); }
+                else { self.postMessage({ type: 'RESULT', move: safeMove || {r:7,c:7}, nodes: nodes, cutoffs: 0, score: 0, time: 0, depth: 'ERR', note: 'RECOVERY' }); }
             }
         };
 
@@ -268,8 +275,7 @@
         function runPVS(b, w, turn, hash, limit, scoreB, scoreW) {
             let bestMove = {r:7, c:7};
             let maxD = 0; let previousScore = 0;
-            // 반복 심화 (Iterative Deepening)
-            for (let d = 2; d <= 12; d+=2) { // 짝수 깊이로 탐색
+            for (let d = 2; d <= 12; d+=2) { 
                  maxD = d; 
                  let alpha = -INF; let beta = INF;
                  let score = pvsRoot(b, w, turn, d, alpha, beta, hash, limit, scoreB, scoreW);
@@ -293,7 +299,6 @@
                 let nextHash = hash ^ ZOBRIST[turn-1][m.r*15 + m.c];
                 let nb = turn === 1 ? b | (1n << pos) : b; let nw = turn === 2 ? w | (1n << pos) : w;
                 
-                // Delta evaluation
                 let deltaB = evalMoveDiff(b, w, m.r, m.c);
                 let deltaW = evalMoveDiff(w, b, m.r, m.c);
                 let nextScB = scB + (turn === 1 ? deltaB : 0);
@@ -327,7 +332,13 @@
                 let nb = turn === 1 ? b | (1n << pos) : b; let nw = turn === 2 ? w | (1n << pos) : w;
                 let nextHash = hash ^ ZOBRIST[turn-1][m.r*15 + m.c];
                 
-                let score = -pvs(nb, nw, 3 - turn, depth - 1, -beta, -alpha, nextHash, scB, scW); // Simplified recursion for brevity
+                // [FIX 3] 재귀 호출 시 점수 업데이트 로직 추가 (더 똑똑하게)
+                let deltaB = evalMoveDiff(b, w, m.r, m.c);
+                let deltaW = evalMoveDiff(w, b, m.r, m.c);
+                let nextScB = scB + (turn === 1 ? deltaB : 0);
+                let nextScW = scW + (turn === 2 ? deltaW : 0);
+
+                let score = -pvs(nb, nw, 3 - turn, depth - 1, -beta, -alpha, nextHash, nextScB, nextScW);
                 
                 if (score > val) val = score;
                 alpha = Math.max(alpha, val);
@@ -336,8 +347,6 @@
             return val;
         }
 
-        // --- Evaluation Logic (Fixed) ---
-        // 패턴 점수
         const SCORES = {
             WIN: 10000000,
             OPEN_4: 100000,
@@ -351,21 +360,16 @@
         function evalFull(my, opp) {
             let score = 0;
             const occ = my | opp;
-            // 가로, 세로, 대각선 모두 평가
-            for (let r=0; r<15; r++) score += evalLine(my, opp, r*15, 1, 15); // 가로
-            for (let c=0; c<15; c++) score += evalLine(my, opp, c, 15, 15); // 세로
-            // 대각선 (15,15는 중앙 대각선 길이)
-            // 우하향 대각선
+            for (let r=0; r<15; r++) score += evalLine(my, opp, r*15, 1, 15); 
+            for (let c=0; c<15; c++) score += evalLine(my, opp, c, 15, 15); 
             for (let c=0; c<=10; c++) score += evalLine(my, opp, c, 16, 15-c);
             for (let r=1; r<=10; r++) score += evalLine(my, opp, r*15, 16, 15-r);
-            // 좌하향 대각선
             for (let c=4; c<15; c++) score += evalLine(my, opp, c, 14, c+1);
             for (let r=1; r<=10; r++) score += evalLine(my, opp, r*15+14, 14, 15-r);
             return score;
         }
 
         function evalMoveDiff(my, opp, r, c) {
-            // 차분 평가 (성능 최적화용, 전체 다시 계산 안함)
             return evalFull(my | (1n << BigInt(r*15+c)), opp) - evalFull(my, opp);
         }
 
@@ -373,7 +377,6 @@
             let score = 0;
             let count = 0;
             let openStart = false;
-            let gap = false; // 한 칸 건너뜀 (Broken line)
 
             for (let i = 0; i < len; i++) {
                 let pos = BigInt(startIdx + i * step);
@@ -386,7 +389,6 @@
                     count = 0;
                     openStart = false;
                 } else {
-                    // 빈 칸
                     if (count > 0) {
                         score += getPatternScore(count, openStart, true);
                     }
@@ -415,38 +417,20 @@
             return 1;
         }
 
-        // --- Forbidden Logic (Renju Rules) ---
         function isForbidden(b, w, pos) {
-            // 흑(b) 입장에서 금수 확인
-            // 1. 장목 (Overline): 6목 이상
             if (checkOverline(b, pos)) return true;
-            
-            // 2. 3-3, 4-4
-            // (정확한 렌주룰: 3-3은 '열린 3'이 두 개 이상, 4-4는 4가 두 개 이상)
-            // 성능을 위해 간단히 패턴 검사
             let threes = 0;
             let fours = 0;
-            
             let r = Number(pos / 15n), c = Number(pos % 15n);
             
             for (let dir of DIRECTIONS) {
                 let info = getLineInfo(b, w, pos, dir);
-                if (info.len >= 6) return true; // 장목 중복 체크
-                if (info.len === 4) {
-                    // 4-4 조건: 반대쪽이 막혀있지 않거나, 5목을 만들 수 있는 잠재력이 있어야 함
-                    // 여기서는 단순화하여 4가 만들어지면 count
-                    fours++; 
-                }
-                if (info.len === 3 && info.openL && info.openR) {
-                    // 3-3 조건: 양쪽이 다 뚫려있어야 '열린 3' (Open 3)
-                    // 거짓 금수 판별은 복잡하므로 약식으로 처리
-                    threes++;
-                }
+                if (info.len >= 6) return true; 
+                if (info.len === 4) fours++; 
+                if (info.len === 3 && info.openL && info.openR) threes++;
             }
-            
             if (fours >= 2) return true;
             if (threes >= 2) return true;
-            
             return false;
         }
         
@@ -456,15 +440,15 @@
                 let count = 1;
                 let p = pos - dir; let lr = r, lc = c;
                 while (p >= 0n && (my & (1n << p))) {
-                     let nr = Number(p/15n), nc = Number(p%15n);
-                     if (Math.abs(nr-lr)>1 || Math.abs(nc-lc)>1) break;
-                     count++; p-=dir; lr=nr; lc=nc;
+                      let nr = Number(p/15n), nc = Number(p%15n);
+                      if (Math.abs(nr-lr)>1 || Math.abs(nc-lc)>1) break;
+                      count++; p-=dir; lr=nr; lc=nc;
                 }
                 p = pos + dir; let rr = r, rc = c;
                 while (p < 225n && (my & (1n << p))) {
-                     let nr = Number(p/15n), nc = Number(p%15n);
-                     if (Math.abs(nr-rr)>1 || Math.abs(nc-rc)>1) break;
-                     count++; p+=dir; rr=nr; rc=nc;
+                      let nr = Number(p/15n), nc = Number(p%15n);
+                      if (Math.abs(nr-rr)>1 || Math.abs(nc-rc)>1) break;
+                      count++; p+=dir; rr=nr; rc=nc;
                 }
                 if (count >= 6) return true;
             }
@@ -475,7 +459,6 @@
             let r = Number(pos / 15n), c = Number(pos % 15n);
             let occ = my | opp;
             
-            // Left scan
             let left = 0; let p = pos - dir; let lr = r, lc = c;
             while (p >= 0n && (my & (1n << p))) {
                  let nr = Number(p/15n), nc = Number(p%15n);
@@ -484,7 +467,6 @@
             }
             let openL = (p >= 0n && p < 225n && !((occ >> p) & 1n));
             
-            // Right scan
             let right = 0; p = pos + dir; let rr = r, rc = c;
             while (p < 225n && (my & (1n << p))) {
                  let nr = Number(p/15n), nc = Number(p%15n);
@@ -496,11 +478,8 @@
             return { len: left + 1 + right, openL, openR };
         }
 
-        // --- VCF Helper ---
         function solveVCF(b, w, turn, depth, path) {
-            if (depth > 6 || Date.now() - startTime > 300) return null; // 너무 깊게 안 함
-            
-            // 4 공격 후보 찾기
+            if (depth > 6 || Date.now() - startTime > 300) return null; 
             let cands = getRankedCands(b, w, turn, 0, null, false);
             for (let m of cands) {
                 let pos = BigInt(m.r * 15 + m.c);
@@ -509,20 +488,13 @@
                 let nextB = turn===1 ? b|(1n<<pos) : b;
                 let nextW = turn===2 ? w|(1n<<pos) : w;
                 
-                // 이번 수로 이겼는지 확인
                 if (checkWin(turn===1?nextB:nextW, pos)) return [...path, m];
                 
-                // 상대방이 막아야 하는지 확인 (내가 4를 뒀으니 상대는 무조건 막아야 함)
-                // 단순히, 상대가 이기는지 체크하고 없으면 재귀
-                // VCF는 '연속 4' 이므로, 내가 둔 수가 4가 되어야 함.
                 let infoArr = [];
                 for(let dir of DIRECTIONS) infoArr.push(getLineInfo(turn===1?nextB:nextW, turn===1?nextW:nextB, pos, dir));
                 
                 let isFour = infoArr.some(i => i.len === 4 && (i.openL || i.openR));
-                if (!isFour) continue; // 4가 아니면 VCF 아님
-                
-                // 상대방의 방어 수 시뮬레이션은 생략하고, 
-                // 간단히 '내가 계속 공격해서 이길 수 있는가'만 봄 (Greedy)
+                if (!isFour) continue; 
             }
             return null;
         }
@@ -546,20 +518,18 @@
             let occ = b | w;
             let list = [];
             
-            // 1. 위협적인 수 먼저 탐색 (주변에 돌이 있는 곳만)
             for(let i=0; i<225; i++) {
                 if ((occ >> BigInt(i)) & 1n) continue;
                 let r = Math.floor(i/15), c = i%15;
                 if (!hasNeighbor(occ, r, c)) continue;
                 
                 let score = POS_WEIGHTS[i];
-                // 간단한 휴리스틱 평가
-                score += evalMoveDiff(p===1?b:w, p===2?b:w, r, c); // 내 공격 점수
-                score += evalMoveDiff(p===2?b:w, p===1?b:w, r, c); // 상대 방어 점수
+                score += evalMoveDiff(p===1?b:w, p===2?b:w, r, c); 
+                score += evalMoveDiff(p===2?b:w, p===1?b:w, r, c); 
                 
                 list.push({r, c, s: score});
             }
-            return list.sort((x,y) => y.s - x.s).slice(0, 20); // 상위 20개만
+            return list.sort((x,y) => y.s - x.s).slice(0, 20); 
         }
         
         function hasNeighbor(occ, r, c) {
@@ -611,12 +581,10 @@
             let threes = 0, fours = 0, overline = false;
             
             for (let [dx, dy] of dirs) {
-                // Check Left
                 let left = 0; let lx = r - dx, ly = c - dy;
                 while (lx >= 0 && lx < 15 && ly >= 0 && ly < 15 && boardCopy[lx][ly] === 1) { left++; lx -= dx; ly -= dy; }
                 let l_open = (lx >= 0 && lx < 15 && ly >= 0 && ly < 15 && boardCopy[lx][ly] === 0);
                 
-                // Check Right
                 let right = 0; let rx = r + dx, ry = c + dy;
                 while (rx >= 0 && rx < 15 && ry >= 0 && ry < 15 && boardCopy[rx][ry] === 1) { right++; rx += dx; ry += dy; }
                 let r_open = (rx >= 0 && rx < 15 && ry >= 0 && ry < 15 && boardCopy[rx][ry] === 0);
@@ -624,7 +592,7 @@
                 let len = left + 1 + right;
                 if (len >= 6) overline = true;
                 if (len === 3 && l_open && r_open) threes++; 
-                if (len === 4 && (l_open || r_open)) fours++; // 4-4는 양쪽 안열려도 금수 조건 포함될 수 있으나 UI에선 단순화
+                if (len === 4 && (l_open || r_open)) fours++; 
             }
             if (overline) return "6목 (장목)"; if (threes >= 2) return "3-3 (쌍삼)"; if (fours >= 2) return "4-4 (쌍사)"; return null;
         }
@@ -639,7 +607,7 @@
                      let x = i + dx, y = j + dy; while (x >= 0 && x < size && y >= 0 && y < size && board[x][y] === p) { count++; x += dx; y += dy; }
                      x = i - dx; y = j - dy; while (x >= 0 && x < size && y >= 0 && y < size && board[x][y] === p) { count++; x -= dx; y -= dy; }
                      if (count >= 5) {
-                         if (p === 1 && count > 5) return false; // 흑은 장목 승리 불가 (이미 금수 로직에서 막히지만 더블 체크)
+                         if (p === 1 && count > 5) return false; 
                          return true;
                      }
                  }
