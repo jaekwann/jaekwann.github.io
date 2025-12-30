@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Simple Renju (Fixed)</title>
+<title>Simple Renju (Final Fix)</title>
 <style>
     body {
         background-color: #f0f0f0;
@@ -85,7 +85,6 @@
     .btn-reset { background: #28a745; color: white; }
     .btn-undo { background: #ffc107; color: #333; }
     .btn-hint { background: #17a2b8; color: white; }
-
 </style>
 </head>
 <body>
@@ -99,7 +98,7 @@
                 <div>🤖 <b>AI:</b> <span id="a_role" style="color:#888; font-weight:bold;">백 (후수)</span></div>
             </div>
             <div id="v_stats" style="text-align: right; color: #888;">
-                <div>MODE: <b id="s_mode">READY</b></div>
+                <div>STATUS: <b id="s_mode">READY</b></div>
                 <div>CALC: <b id="s_nodes">0</b> | DEPTH: <b id="s_depth">0</b></div>
             </div>
         </div>
@@ -121,13 +120,19 @@
 
     <script>
     (function() {
-        // [AI LOGIC PART - FIXED]
+        // [AI 로직: 웹 워커 코드]
         const workerSource = `
+        // 전역 변수 선언 (가장 중요)
+        let nodes = 0; 
+        let cutoffs = 0; // 이 변수가 없어서 멈췄던 것임
+        let startTime = 0;
         const INF = 1000000000; 
-        let nodes = 0; let mctsSims = 0; let startTime = 0;
-        let cutoffs = 0; // [FIX 1] cutoffs 변수 선언 추가 (멈춤 원인 해결)
-        const TIME_LIMIT = 3000; 
+        const TIME_LIMIT = 2500; // 2.5초 제한
         
+        // 방향 벡터 (BigInt)
+        const DIRECTIONS = [1n, 15n, 16n, 14n]; 
+        
+        // [오프닝 북 데이터]
         const BOOK = {
             "7,7|6,8|6,6": {r:5, c:7}, "7,7|6,8|6,6|5,7": {r:5, c:8}, 
             "7,7|6,6|8,6": {r:5, c:5}, "7,7|6,6|8,8": {r:5, c:5},        
@@ -144,6 +149,7 @@
             "7,7|5,5|4,4": {r:3, c:5}, "": {r:7, c:7} 
         };
         const INV_OP = [0, 3, 2, 1, 4, 5, 6, 7];
+
         function transform(r, c, op) {
             let nr = r - 7, nc = c - 7; let tr, tc;
             switch(op) {
@@ -170,20 +176,21 @@
             return null;
         }
 
+        // 위치 가중치 (중앙 선호)
         const POS_WEIGHTS = new Int32Array(225);
         for(let r=0; r<15; r++) for(let c=0; c<15; c++) {
             let d = Math.sqrt((r-7)*(r-7) + (c-7)*(c-7));
             POS_WEIGHTS[r*15+c] = Math.round(10 - d); 
         }
+        
+        // Zobrist Hashing
         const ZOBRIST = [new BigUint64Array(225), new BigUint64Array(225)];
         {
             let seed = 0xDEADBEEFn;
             function rand() { seed = (seed * 6364136223846793005n + 1442695040888963407n); return seed; }
             for(let p=0; p<2; p++) for(let i=0; i<225; i++) ZOBRIST[p][i] = rand();
         }
-        
-        const DIRECTIONS = [1n, 15n, 16n, 14n]; 
-        
+
         self.onmessage = function(e) {
             const d = e.data; 
             try {
@@ -193,7 +200,6 @@
                 
                 const b = BigInt(d.b); const w = BigInt(d.w); const turn = d.turn;
                 let currentHash = computeHash(b, w);
-                
                 let initScoreB = evalFull(b, w);
                 let initScoreW = evalFull(w, b);
 
@@ -215,6 +221,8 @@
                 if (d.type === 'THINK') {
                     nodes = 0; cutoffs = 0; startTime = Date.now();
                     let hist = parseHistory(d.history);
+                    
+                    // 1. 족보 확인
                     let bookMove = matchBook(hist);
                     if (bookMove) {
                          let idx = BigInt(bookMove.r * 15 + bookMove.c);
@@ -224,47 +232,52 @@
                          }
                     }
                     
+                    // 2. VCF (필승 찾기)
                     let winSeq = solveVCF(b, w, turn, 0, []);
                     if (winSeq) { self.postMessage({ type: 'RESULT', move: winSeq[0], nodes, cutoffs, mcts: 0, time: Date.now()-startTime, depth: 'VCF', note: 'CHECKMATE' }); return; }
                     
+                    // 3. PVS 탐색
                     const result = runPVS(b, w, turn, currentHash, TIME_LIMIT, initScoreB, initScoreW);
                     if (!result || !result.move) throw "No move found";
                     self.postMessage({ type: 'RESULT', move: result.move, nodes, cutoffs, mcts: 0, score: result.val, time: Date.now() - startTime, depth: result.depth, note: 'THINKING' });
                 }
             } catch (err) {
-                // [FIX 2] 에러 발생 시 안전한 빈 곳을 확실하게 찾도록 수정
-                const fb_b = BigInt(e.data.b); const fb_w = BigInt(e.data.w);
-                let fallbackMoves = getRankedCands(fb_b, fb_w, e.data.turn, 0, null, true);
-                let safeMove = null;
-                
-                // 1순위: 평가 점수 높은 곳
-                for (let m of fallbackMoves) {
-                    let p = BigInt(m.r * 15 + m.c);
-                    if (e.data.turn === 1 && isForbidden(fb_b | (1n << p), fb_w, p)) continue;
-                    safeMove = m; break;
-                }
-                
-                // 2순위: 어떻게든 빈 곳 찾기 (완전 랜덤)
-                if (!safeMove) {
-                    let empties = [];
-                    for(let r=0; r<15; r++) for(let c=0; c<15; c++) {
-                        let p = BigInt(r*15+c);
-                        if (!((fb_b|fb_w) & (1n << p))) {
-                             if (e.data.turn === 1 && isForbidden(fb_b | (1n << p), fb_w, p)) continue;
-                             empties.push({r,c});
-                        }
-                    }
-                    if (empties.length > 0) safeMove = empties[Math.floor(Math.random() * empties.length)];
-                }
-                
-                if (d.type === 'HINT') { self.postMessage({ type: 'HINT_RESULT', move: safeMove }); } 
-                else { self.postMessage({ type: 'RESULT', move: safeMove || {r:7,c:7}, nodes: nodes, cutoffs: 0, score: 0, time: 0, depth: 'ERR', note: 'RECOVERY' }); }
+                // [안전장치] 에러 발생 시 랜덤으로라도 둔다.
+                safeFallback(e.data.b, e.data.w, e.data.turn, d.type);
             }
         };
 
+        function safeFallback(sb, sw, turn, type) {
+            try {
+                const fb_b = BigInt(sb); const fb_w = BigInt(sw);
+                let empties = [];
+                for(let r=0; r<15; r++) for(let c=0; c<15; c++) {
+                    let p = BigInt(r*15+c);
+                    if (!((fb_b|fb_w) & (1n << p))) {
+                         if (turn === 1 && isForbidden(fb_b | (1n << p), fb_w, p)) continue;
+                         empties.push({r,c});
+                    }
+                }
+                // 중앙에 가까운 빈 곳 찾기
+                empties.sort((a,b) => {
+                    let da = Math.abs(a.r-7) + Math.abs(a.c-7);
+                    let db = Math.abs(b.r-7) + Math.abs(b.c-7);
+                    return da - db;
+                });
+                
+                let safeMove = empties.length > 0 ? empties[0] : {r:7, c:7};
+                
+                if (type === 'HINT') self.postMessage({ type: 'HINT_RESULT', move: safeMove });
+                else self.postMessage({ type: 'RESULT', move: safeMove, nodes: nodes, cutoffs: 0, score: 0, time: 0, depth: 'ERR', note: 'RECOVERY' });
+            } catch(e) {
+                // 진짜 최후의 수단
+                self.postMessage({ type: 'RESULT', move: {r:0, c:0}, nodes:0, depth: 'FATAL', note: 'FATAL_ERR' });
+            }
+        }
+
         function parseHistory(str) {
             if (!str) return [];
-            try { return str.split('|').map(s => { let p = s.split(','); return {r: parseInt(p[0]), c: parseInt(p[1])}; }); }
+            try { return str.split('|').filter(x=>x).map(s => { let p = s.split(','); return {r: parseInt(p[0]), c: parseInt(p[1])}; }); }
             catch(e) { return []; }
         }
         
@@ -275,7 +288,8 @@
         function runPVS(b, w, turn, hash, limit, scoreB, scoreW) {
             let bestMove = {r:7, c:7};
             let maxD = 0; let previousScore = 0;
-            for (let d = 2; d <= 12; d+=2) { 
+            // 깊이 2부터 짝수로 증가
+            for (let d = 2; d <= 8; d+=2) { 
                  maxD = d; 
                  let alpha = -INF; let beta = INF;
                  let score = pvsRoot(b, w, turn, d, alpha, beta, hash, limit, scoreB, scoreW);
@@ -332,7 +346,6 @@
                 let nb = turn === 1 ? b | (1n << pos) : b; let nw = turn === 2 ? w | (1n << pos) : w;
                 let nextHash = hash ^ ZOBRIST[turn-1][m.r*15 + m.c];
                 
-                // [FIX 3] 재귀 호출 시 점수 업데이트 로직 추가 (더 똑똑하게)
                 let deltaB = evalMoveDiff(b, w, m.r, m.c);
                 let deltaW = evalMoveDiff(w, b, m.r, m.c);
                 let nextScB = scB + (turn === 1 ? deltaB : 0);
@@ -359,7 +372,6 @@
 
         function evalFull(my, opp) {
             let score = 0;
-            const occ = my | opp;
             for (let r=0; r<15; r++) score += evalLine(my, opp, r*15, 1, 15); 
             for (let c=0; c<15; c++) score += evalLine(my, opp, c, 15, 15); 
             for (let c=0; c<=10; c++) score += evalLine(my, opp, c, 16, 15-c);
@@ -383,17 +395,11 @@
                 if ((my >> pos) & 1n) {
                     count++;
                 } else if ((opp >> pos) & 1n) {
-                    if (count > 0) {
-                        score += getPatternScore(count, openStart, false);
-                    }
-                    count = 0;
-                    openStart = false;
+                    if (count > 0) score += getPatternScore(count, openStart, false);
+                    count = 0; openStart = false;
                 } else {
-                    if (count > 0) {
-                        score += getPatternScore(count, openStart, true);
-                    }
-                    count = 0;
-                    openStart = true;
+                    if (count > 0) score += getPatternScore(count, openStart, true);
+                    count = 0; openStart = true;
                 }
             }
             if (count > 0) score += getPatternScore(count, openStart, false);
@@ -421,7 +427,6 @@
             if (checkOverline(b, pos)) return true;
             let threes = 0;
             let fours = 0;
-            let r = Number(pos / 15n), c = Number(pos % 15n);
             
             for (let dir of DIRECTIONS) {
                 let info = getLineInfo(b, w, pos, dir);
@@ -435,20 +440,19 @@
         }
         
         function checkOverline(my, pos) {
-            let r = Number(pos / 15n), c = Number(pos % 15n);
             for (let dir of DIRECTIONS) {
                 let count = 1;
-                let p = pos - dir; let lr = r, lc = c;
+                let p = pos - dir; 
                 while (p >= 0n && (my & (1n << p))) {
-                      let nr = Number(p/15n), nc = Number(p%15n);
-                      if (Math.abs(nr-lr)>1 || Math.abs(nc-lc)>1) break;
-                      count++; p-=dir; lr=nr; lc=nc;
+                      let nr = Number(p/15n); let lr = Number((p+dir)/15n);
+                      if (Math.abs(nr-lr)>1) break;
+                      count++; p-=dir;
                 }
-                p = pos + dir; let rr = r, rc = c;
+                p = pos + dir;
                 while (p < 225n && (my & (1n << p))) {
-                      let nr = Number(p/15n), nc = Number(p%15n);
-                      if (Math.abs(nr-rr)>1 || Math.abs(nc-rc)>1) break;
-                      count++; p+=dir; rr=nr; rc=nc;
+                      let nr = Number(p/15n); let lr = Number((p-dir)/15n);
+                      if (Math.abs(nr-lr)>1) break;
+                      count++; p+=dir;
                 }
                 if (count >= 6) return true;
             }
@@ -456,22 +460,21 @@
         }
 
         function getLineInfo(my, opp, pos, dir) {
-            let r = Number(pos / 15n), c = Number(pos % 15n);
             let occ = my | opp;
             
-            let left = 0; let p = pos - dir; let lr = r, lc = c;
+            let left = 0; let p = pos - dir; 
             while (p >= 0n && (my & (1n << p))) {
-                 let nr = Number(p/15n), nc = Number(p%15n);
-                 if (Math.abs(nr-lr)>1 || Math.abs(nc-lc)>1) break;
-                 left++; p-=dir; lr=nr; lc=nc;
+                 let nr = Number(p/15n); let lr = Number((p+dir)/15n);
+                 if (Math.abs(nr-lr)>1) break;
+                 left++; p-=dir;
             }
             let openL = (p >= 0n && p < 225n && !((occ >> p) & 1n));
             
-            let right = 0; p = pos + dir; let rr = r, rc = c;
+            let right = 0; p = pos + dir;
             while (p < 225n && (my & (1n << p))) {
-                 let nr = Number(p/15n), nc = Number(p%15n);
-                 if (Math.abs(nr-rr)>1 || Math.abs(nc-rc)>1) break;
-                 right++; p+=dir; rr=nr; rc=nc;
+                 let nr = Number(p/15n); let lr = Number((p-dir)/15n);
+                 if (Math.abs(nr-lr)>1) break;
+                 right++; p+=dir;
             }
             let openR = (p >= 0n && p < 225n && !((occ >> p) & 1n));
             
@@ -500,18 +503,24 @@
         }
 
         function checkWin(my, pos) {
-            return checkOverline(my, pos) ? false : (function(){
-                 let r = Number(pos / 15n), c = Number(pos % 15n);
-                 for (let dir of DIRECTIONS) {
-                    let count = 1;
-                    let p = pos - dir; let lr = r, lc = c;
-                    while (p>=0n && (my&(1n<<p))) { let nr=Number(p/15n); if(Math.abs(nr-lr)>1)break; count++; p-=dir; lr=nr;}
-                    p = pos + dir; let rr = r, rc = c;
-                    while (p<225n && (my&(1n<<p))) { let nr=Number(p/15n); if(Math.abs(nr-rr)>1)break; count++; p+=dir; rr=nr;}
-                    if (count === 5) return true;
-                 }
-                 return false;
-            })();
+             let isOver = checkOverline(my, pos);
+             if (isOver) return false;
+             
+             for (let dir of DIRECTIONS) {
+                let count = 1;
+                let p = pos - dir; 
+                while (p>=0n && (my&(1n<<p))) { 
+                    let nr=Number(p/15n); let lr=Number((p+dir)/15n);
+                    if(Math.abs(nr-lr)>1)break; count++; p-=dir; 
+                }
+                p = pos + dir; 
+                while (p<225n && (my&(1n<<p))) { 
+                    let nr=Number(p/15n); let lr=Number((p-dir)/15n);
+                    if(Math.abs(nr-lr)>1)break; count++; p+=dir; 
+                }
+                if (count === 5) return true;
+             }
+             return false;
         }
 
         function getRankedCands(b, w, p, depth, ttMove, addNoise) {
@@ -557,11 +566,14 @@
         
         let board = Array.from({length: size}, () => Array(size).fill(0));
         let isGameOver = false; let moveHistory = []; let mousePos = null; let hintPos = null; let humanColor = 1; let forbiddenMap = [];
+        let watchdogTimer = null; // AI 응답 감시용
 
         const blob = new Blob([workerSource], {type: 'text/javascript'});
         const worker = new Worker(window.URL.createObjectURL(blob));
 
         worker.onmessage = function(e) {
+            clearTimeout(watchdogTimer); // 응답 오면 타이머 해제
+            
             const d = e.data;
             if (d.type === 'HINT_RESULT') { if (d.move) { hintPos = d.move; drawBoard(); status.innerText = '💡 힌트 위치 표시됨'; } return; }
             if (d.type === 'RESULT') {
@@ -574,6 +586,36 @@
                 status.innerText = msg;
             }
         };
+        
+        // [안전장치 2] 워커 에러 감지
+        worker.onerror = function(err) {
+            console.error(err);
+            status.innerText = "⚠️ AI 오류 발생. 강제 착수합니다.";
+            forceRandomMove();
+        };
+
+        function forceRandomMove() {
+            clearTimeout(watchdogTimer);
+            if (isGameOver) return;
+            // 빈 곳 중 아무데나 둔다
+            let empties = [];
+            for(let r=0; r<15; r++) for(let c=0; c<15; c++) if(board[r][c]===0) empties.push({r,c});
+            
+            // 중앙 근처 선호
+            empties.sort((a,b) => (Math.abs(a.r-7)+Math.abs(a.c-7)) - (Math.abs(b.r-7)+Math.abs(b.c-7)));
+            
+            if (empties.length > 0) {
+                // 금수 체크
+                for(let m of empties) {
+                    if (3-humanColor === 1 && checkForbidden(m.r, m.c)) continue;
+                    placeStone(m.r, m.c, 3-humanColor);
+                    status.innerText = "🤖 AI (강제 착수)";
+                    return;
+                }
+                // 둘 곳 없으면 첫번째
+                if(empties.length > 0) placeStone(empties[0].r, empties[0].c, 3-humanColor);
+            }
+        }
 
         function checkForbidden(r, c) {
             let boardCopy = board.map(row => [...row]); boardCopy[r][c] = 1; 
@@ -635,6 +677,16 @@
             
             if (p === humanColor) {
                 status.innerText = '🛡️ AI 생각 중...'; status.style.color = '#555'; forbiddenMsg.innerText = '';
+                
+                // [안전장치 1] 3.5초 내 응답 없으면 강제 착수
+                clearTimeout(watchdogTimer);
+                watchdogTimer = setTimeout(() => {
+                    if (!isGameOver && status.innerText.includes('생각')) {
+                        console.warn("AI timeout");
+                        forceRandomMove();
+                    }
+                }, 3500);
+
                 let b = 0n, w = 0n;
                 for(let rr=0; rr<size; rr++) for(let cc=0; cc<size; cc++) {
                     if(board[rr][cc]===1) b |= (1n << BigInt(rr*15 + cc));
@@ -771,10 +823,7 @@
         }
         window.undoMove = () => {
             if (moveHistory.length < 2 || isGameOver) return;
-            // AI가 두고 있는 중이면 무르기 불가
             if (status.innerText.includes('AI') && !isGameOver) return;
-            
-            // 내 수와 AI 수 두 개를 뺌
             for(let k=0; k<2; k++) { let m = moveHistory.pop(); if(m) board[m.r][m.c] = 0; }
             isGameOver = false; hintPos = null; updateForbiddenMap(); status.innerText = '↶ 무르기 완료'; drawBoard();
         };
