@@ -125,7 +125,7 @@
         const workerSource = `
         const INF = 1000000000; 
         let nodes = 0; let mctsSims = 0; let startTime = 0;
-        const TIME_LIMIT = 2000; const MAX_TT_SIZE = 5000000; 
+        const TIME_LIMIT = 4000; const MAX_TT_SIZE = 5000000; 
         
         const BOOK = {
             "7,7|6,8|6,6": {r:5, c:7}, "7,7|6,8|6,6|5,7": {r:5, c:8}, 
