@@ -2,10 +2,10 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Perfect Renju (Fixed Open 3 Defense)</title>
+<title>Perfect Renju (Balanced Defense)</title>
 <style>
     body {
-        background-color: #f0f0f0;
+        background-color: #e9ecef;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         margin: 0;
         padding: 20px;
@@ -17,56 +17,56 @@
     #game_container {
         text-align: center;
         background: #fff;
-        padding: 30px;
-        border-radius: 15px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-        max-width: 720px;
+        padding: 35px;
+        border-radius: 20px;
+        box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+        max-width: 700px;
         width: 100%;
     }
     h1 {
-        color: #333;
-        margin: 0 0 20px 0;
-        letter-spacing: 2px;
-        font-size: 32px;
-        font-weight: 300;
-        text-transform: uppercase;
+        color: #2c3e50;
+        margin: 0 0 25px 0;
+        letter-spacing: 1px;
+        font-size: 28px;
+        font-weight: 700;
     }
     .status-bar {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        background: #f8f9fa;
-        padding: 10px 20px;
-        border-radius: 8px;
+        background: #f1f3f5;
+        padding: 12px 20px;
+        border-radius: 12px;
         margin-bottom: 20px;
-        border: 1px solid #eee;
-        color: #555;
+        border: 1px solid #dee2e6;
+        color: #495057;
         font-size: 14px;
+        font-weight: 500;
     }
     canvas {
         cursor: crosshair;
         border-radius: 4px;
-        box-shadow: 2px 2px 8px rgba(0,0,0,0.3);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
     }
     #v_status {
         margin-top: 15px;
         font-size: 18px;
-        font-weight: 600;
-        color: #333;
-        min-height: 24px;
+        font-weight: 700;
+        color: #343a40;
+        min-height: 27px;
     }
     #v_forbidden {
         margin-top: 5px;
         font-size: 14px;
-        color: #e74c3c;
-        font-weight: bold;
+        color: #e03131;
+        font-weight: 600;
         min-height: 20px;
     }
     .btn-group {
-        margin-top: 20px;
+        margin-top: 25px;
         display: flex;
         justify-content: center;
-        gap: 10px;
+        gap: 12px;
         flex-wrap: wrap;
     }
     button {
@@ -74,23 +74,24 @@
         font-size: 14px;
         font-weight: 600;
         border: none;
-        border-radius: 6px;
+        border-radius: 8px;
         cursor: pointer;
-        transition: 0.2s;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
-    button:hover { opacity: 0.9; transform: translateY(-1px); }
+    button:hover { opacity: 0.9; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
     button:active { transform: translateY(0); }
     
-    .btn-swap { background: #6c757d; color: white; }
-    .btn-reset { background: #28a745; color: white; }
-    .btn-undo { background: #ffc107; color: #333; }
-    .btn-hint { background: #17a2b8; color: white; }
+    .btn-swap { background: #495057; color: white; }
+    .btn-reset { background: #2f9e44; color: white; }
+    .btn-undo { background: #fcc419; color: #343a40; }
+    .btn-hint { background: #228be6; color: white; }
 </style>
 </head>
 <body>
 
     <div id="game_container">
-        <h1>Perfect Renju</h1>
+        <h1>Perfect Renju <span style="font-size:14px; color:#888; font-weight:400;">(Balanced Ver.)</span></h1>
         
         <div class="status-bar">
             <div style="text-align: left;">
@@ -128,18 +129,19 @@
         let nodes = 0; let mctsSims = 0; let startTime = 0;
         const TIME_LIMIT = 4000; const MAX_TT_SIZE = 5000000; 
         
+        // [BOOK] Opening database
         const BOOK = {
             "7,7|6,8|6,6": {r:5, c:7}, "7,7|6,8|6,6|5,7": {r:5, c:8}, 
-            "7,7|6,6|8,6": {r:5, c:5}, "7,7|6,6|8,8": {r:5, c:5},        
+            "7,7|6,6|8,6": {r:5, c:5}, "7,7|6,6|8,8": {r:5, c:5},         
             "7,7|7,8|6,8": {r:5, c:7}, "7,7|7,8|6,8|5,7": {r:5, c:8},
             "7,7|5,6|4,5": {r:3, c:6}, "7,7|6,9|5,10": {r:4, c:9},      
             "7,7|9,6|10,5": {r:8, c:4}, "7,7|5,8|4,9": {r:3, c:8},      
-            "7,7|6,7|6,6": {r:5, c:5}, "7,7|8,7|8,6": {r:9, c:5},        
-            "7,7|8,7|8,6|9,5": {r:7, c:5}, "7,7|7,5|6,4": {r:5, c:5},        
+            "7,7|6,7|6,6": {r:5, c:5}, "7,7|8,7|8,6": {r:9, c:5},         
+            "7,7|8,7|8,6|9,5": {r:7, c:5}, "7,7|7,5|6,4": {r:5, c:5},         
             "7,7|5,7|4,6": {r:3, c:7}, "7,7|5,7|4,6|3,7": {r:5, c:5},
             "7,7|5,7|4,6|3,7|5,5": {r:6, c:5}, "7,7|7,9|6,10": {r:5, c:9},      
             "7,7|7,9|6,10|5,9": {r:5, c:8}, "7,7|9,7|10,6": {r:11, c:7},      
-            "7,7|7,4|6,3": {r:5, c:4}, "7,7|4,7|3,6": {r:2, c:7},        
+            "7,7|7,4|6,3": {r:5, c:4}, "7,7|4,7|3,6": {r:2, c:7},         
             "7,7|8,5|9,4": {r:7, c:3}, "7,7|9,9|10,10": {r:8, c:11},    
             "7,7|5,5|4,4": {r:3, c:5}, "": {r:7, c:7} 
         };
@@ -211,6 +213,9 @@
                 if (d.type === 'THINK') {
                     nodes = 0; cutoffs = 0; mctsSims = 0; startTime = Date.now(); MCTS_SCORES.fill(0);
                     if (d.history === "") { self.postMessage({ type: 'RESULT', move: {r:7,c:7}, nodes: 1, depth: 'BOOK', note: 'Start' }); return; }
+
+                    let bookMove = matchBook(d.history.split("|").map(s => {let p=s.split(","); return {r:parseInt(p[0]), c:parseInt(p[1])}}));
+                    if (bookMove) { self.postMessage({ type: 'RESULT', move: bookMove, nodes: 1, depth: 'BOOK', note: 'BOOK' }); return; }
 
                     // 1. Force Win (VCF) / Force Block
                     let winSeq = solveVCF(b, w, turn, 0, []);
@@ -354,8 +359,10 @@
                 if (alpha >= beta) { cutoffs++; return ttEntry.score; }
             }
             if (depth === 0) return quiescence(b, w, turn, alpha, beta, 4, scB, scW);
-            if (turn === 1 && scW > 500000000) return -INF + depth; 
-            if (turn === 2 && scB > 500000000) return -INF + depth; 
+            
+            // Safety cutoff for extreme scores
+            if (turn === 1 && scW > 800000000) return -INF + depth; 
+            if (turn === 2 && scB > 800000000) return -INF + depth; 
 
             let cands = getRankedCands(b, w, turn, depth, ttEntry ? ttEntry.move : null, false);
             if (cands.length === 0) return (turn === 1) ? (scB - scW) : -(scB - scW);
@@ -397,7 +404,7 @@
             
             let cands = getRankedCands(b, w, turn, 30, null, false);
             let noisyMoves = []; 
-            for(let m of cands) { if (m.s >= 10000000) noisyMoves.push(m); } 
+            for(let m of cands) { if (m.s >= 40000000) noisyMoves.push(m); } 
 
             for (let m of noisyMoves) {
                 let pos = BigInt(m.r * 15 + m.c);
@@ -444,7 +451,7 @@
 
         function solveVCF(b, w, turn, depth, path) {
              if (depth > 12 || Date.now() - startTime > 1500) return null;
-             let attacks = getRankedCands(b, w, turn, 0, null, false).filter(m => m.s >= 50000000); 
+             let attacks = getRankedCands(b, w, turn, 0, null, false).filter(m => m.s >= 40000000); 
              for (let atk of attacks) {
                  let pos = BigInt(atk.r * 15 + atk.c);
                  if (turn === 1 && isForbidden(b | (1n << pos), w, pos)) continue;
@@ -559,18 +566,27 @@
         }
         
         // ===============================================
-        // [FIXED] evalMoveUltra with Stronger Defense
+        // [FIXED] Balanced Evaluation Logic
         // ===============================================
         function evalMoveUltra(my, opp, b, w, r, c, p) {
             let score = 0; const occ = b | w;
+            
+            // [Defense/Attack Scores Table - Balanced]
+            // Win: 1,000,000,000
+            // Block 5: 900,000,000
+            // Block Open 4: 400,000,000 (Lethal)
+            // My Open 4: 500,000,000
+            // Block Open 3: 80,000,000 (Increased Priority, 2x of My Open 3)
+            // My Open 3: 40,000,000
+            
             const knightDirs = [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]];
             for(let [dr, dc] of knightDirs) {
                 let nr = r+dr, nc = c+dc;
-                if (nr>=0 && nr<15 && nc>=0 && nc<15 && (my & (1n << BigInt(nr*15+nc)))) score += 500; 
+                if (nr>=0 && nr<15 && nc>=0 && nc<15 && (my & (1n << BigInt(nr*15+nc)))) score += 1000; 
             }
             
             for (let dir of DIRECTIONS) {
-                // [A] Attack Analysis (My stones)
+                // 1. My Pattern (Attack)
                 let l=0, r_cnt=0;
                 let lp = BigInt(r*15+c) - dir; 
                 while (lp>=0n && (my & (1n<<lp)) && isValid(lp, BigInt(r*15+c), dir)) { l++; lp-=dir; }
@@ -582,50 +598,55 @@
 
                 let len = l + 1 + r_cnt;
                 if (len >= 5) score += 1000000000; 
-                else if (len === 4) { if (l_open || r_open) score += 300000000; else score += 1000000; }
-                else if (len === 3) { if (l_open && r_open) score += 50000000; else if (l_open || r_open) score += 500000; }
+                else if (len === 4) { if (l_open || r_open) score += 500000000; else score += 2000000; }
+                else if (len === 3) { if (l_open && r_open) score += 40000000; else if (l_open || r_open) score += 500000; }
+                else if (len === 2) { if (l_open && r_open) score += 500000; }
 
-                // [B] Defense Analysis (Opponent stones) - FIXED LOGIC
-                let ol=0, or=0;
-                // Check Left side for Opponent
-                lp = BigInt(r*15+c) - dir; 
-                while (lp>=0n && (opp & (1n<<lp)) && isValid(lp, BigInt(r*15+c), dir)) { ol++; lp-=dir; }
-                let ol_open = (lp >= 0n && lp < 225n && !(occ & (1n << lp)) && isValid(lp, BigInt(r*15+c), dir));
-
-                // Check Right side for Opponent
-                rp = BigInt(r*15+c) + dir; 
-                while (rp<225n && (opp & (1n<<rp)) && isValid(rp, BigInt(r*15+c), dir)) { or++; rp+=dir; }
-                let or_open = (rp >= 0n && rp < 225n && !(occ & (1n << rp)) && isValid(rp, BigInt(r*15+c), dir));
-                
-                let straightLen = ol + 1 + or; 
-
-                if (straightLen >= 5) {
-                    score += 950000000; // Must Block 5
-                }
-                else if (straightLen === 4) {
-                    // Critical: Block Open 4 (lethal)
-                    if (ol_open || or_open) score += 300000000; 
-                    else score += 150000000; // Block Closed 4
-                }
-                else if (straightLen === 3) {
-                    // Critical Fix: Block Open 3 (lethal threat)
-                    if (ol_open && or_open) score += 250000000; // Higher Priority than before
-                    else if (ol_open || or_open) score += 20000000; 
-                }
-                
-                // Pattern for Jumped 4s (e.g. 2 2 1 2 2)
-                // We check if opponent has 1-gap patterns
+                // 2. Opponent Pattern (Defense) - Using String Matching for accuracy
                 let pattern = "";
+                // Capture 9 cells: 4 left, self, 4 right
                 for(let k=-4; k<=4; k++) {
-                    if (k===0) { pattern += "1"; continue; } 
                     let p = BigInt(r*15+c) + BigInt(k)*dir;
                     if (isValid(p, BigInt(r*15+c), dir, k)) {
-                        if ((opp >> p) & 1n) pattern += "2";
-                        else if ((my >> p) & 1n) pattern += "1";
-                        else pattern += "0";
-                    } else pattern += "1"; 
+                        if (k === 0) pattern += "1"; // "1" represents the stone I'm playing
+                        else if ((opp >> p) & 1n) pattern += "2"; // "2" is opponent
+                        else if ((my >> p) & 1n) pattern += "3"; // "3" is my other stones (blocker)
+                        else pattern += "0"; // Empty
+                    } else pattern += "3"; // Wall acts like a blocker
                 }
-                if (pattern.includes("22122") || pattern.includes("21222") || pattern.includes("22212")) score += 900000000;
+
+                // [Crucial Defense Logic]
+                // 2222 -> 5 (Must Block)
+                if (pattern.includes("2222")) score += 900000000;
+                
+                // Open 4 Defense (Lethal) -> 02221 or 12220 or 22122 etc.
+                if (pattern.includes("02221") || pattern.includes("12220") || 
+                    pattern.includes("22122") || pattern.includes("22212") || pattern.includes("21222")) {
+                    score += 400000000;
+                }
+                
+                // Open 3 Defense (The Balance Fix)
+                // "02210" means I'm plugging the hole of a potential Open 3
+                // "02220" implies I'm blocking the end of a contiguous Open 3 (handled by length check usually, but pattern is safer)
+                
+                // Case A: Blocking Contiguous Open 3 (02220)
+                // If I play at '1': 022210 or 012220. 
+                // We just check if the opponent HAS an open 3 if I wasn't there.
+                // Simplified: if pattern implies blocking an Open 3
+                if (pattern.includes("02210") || pattern.includes("01220") || // Blocking a split
+                    pattern.includes("022210") || pattern.includes("012220")) { // Blocking ends
+                    score += 80000000; // Value > My Open 3 (40M)
+                }
+
+                // Case B: Jumped Open 3 (The "Weird Place" Fix)
+                // Opponent pattern: 2022 (020220). I play '1' at the '0'.
+                // Pattern becomes: 2122 or 2212.
+                if (pattern.includes("2122") || pattern.includes("2212")) {
+                     // Check if it's open-ended.
+                     // The pattern string "2122" is inside the window.
+                     // If it was "020220", playing at index 0 makes it "021220".
+                     score += 80000000; // Treat same as Open 3
+                }
             }
             return score;
         }
@@ -775,11 +796,11 @@
              worker.postMessage({ type: 'HINT', b: b.toString(), w: w.toString(), turn: humanColor, history: hStr });
         }
         function drawBoard() {
-            ctx.fillStyle = '#DCB35C'; 
+            ctx.fillStyle = '#f0d9b5'; 
             ctx.fillRect(0, 0, canvas.width, canvas.height); 
             
-            ctx.strokeStyle = '#000000'; ctx.lineWidth = 1; ctx.font = '12px sans-serif';
-            ctx.fillStyle = '#000000';
+            ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.font = '12px sans-serif';
+            ctx.fillStyle = '#555';
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             const cols = "ABCDEFGHIJKLMNO";
             for (let i=0; i<size; i++) {
