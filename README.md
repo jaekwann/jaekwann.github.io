@@ -126,7 +126,7 @@
         const workerSource = `
         const INF = 1000000000; 
         let nodes = 0; let mctsSims = 0; let startTime = 0;
-        const TIME_LIMIT = 1000; const MAX_TT_SIZE = 5000000; 
+        const TIME_LIMIT = 4000; const MAX_TT_SIZE = 5000000; 
         
         // Basic Opening Book (Center only)
         const BOOK = { "": {r:7, c:7} }; 
