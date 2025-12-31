@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Perfect Renju (Fixed AI & UI)</title>
+<title>Perfect Renju (Fixed Open 3 Defense)</title>
 <style>
     body {
         background-color: #f0f0f0;
@@ -121,21 +121,20 @@
     <script>
     (function() {
         // ==========================================
-        // [AI WORKER CODE] - Powerful Logic + Fixed Jumped 4 Detection
+        // [AI WORKER CODE]
         // ==========================================
         const workerSource = `
         const INF = 1000000000; 
         let nodes = 0; let mctsSims = 0; let startTime = 0;
         const TIME_LIMIT = 4000; const MAX_TT_SIZE = 5000000; 
         
-        
         const BOOK = {
             "7,7|6,8|6,6": {r:5, c:7}, "7,7|6,8|6,6|5,7": {r:5, c:8}, 
-            "7,7|6,6|8,6": {r:5, c:5}, "7,7|6,6|8,8": {r:5, c:5},       
+            "7,7|6,6|8,6": {r:5, c:5}, "7,7|6,6|8,8": {r:5, c:5},        
             "7,7|7,8|6,8": {r:5, c:7}, "7,7|7,8|6,8|5,7": {r:5, c:8},
             "7,7|5,6|4,5": {r:3, c:6}, "7,7|6,9|5,10": {r:4, c:9},      
             "7,7|9,6|10,5": {r:8, c:4}, "7,7|5,8|4,9": {r:3, c:8},      
-            "7,7|6,7|6,6": {r:5, c:5}, "7,7|8,7|8,6": {r:9, c:5},       
+            "7,7|6,7|6,6": {r:5, c:5}, "7,7|8,7|8,6": {r:9, c:5},        
             "7,7|8,7|8,6|9,5": {r:7, c:5}, "7,7|7,5|6,4": {r:5, c:5},        
             "7,7|5,7|4,6": {r:3, c:7}, "7,7|5,7|4,6|3,7": {r:5, c:5},
             "7,7|5,7|4,6|3,7|5,5": {r:6, c:5}, "7,7|7,9|6,10": {r:5, c:9},      
@@ -230,7 +229,6 @@
                     self.postMessage({ type: 'RESULT', move: result.move, nodes, score: result.val, depth: result.depth, note: 'GM ENGINE' });
                 }
             } catch (err) {
-                // Recovery logic
                 const fb_b = BigInt(e.data.b); const fb_w = BigInt(e.data.w);
                 let fallbackMoves = getRankedCands(fb_b, fb_w, e.data.turn, 0, null, true);
                 self.postMessage({ type: 'RESULT', move: fallbackMoves[0], nodes: nodes, depth: 'ERR', note: 'RECOVERY' });
@@ -242,7 +240,6 @@
             let h = 0n; for(let i=0; i<225; i++) { if((b>>BigInt(i))&1n) h^=ZOBRIST[0][i]; if((w>>BigInt(i))&1n) h^=ZOBRIST[1][i]; } return h;
         }
 
-        // --- MCTS Logic (Simplifed) ---
         class MCTSNode { constructor(p,m,t){this.parent=p;this.move=m;this.turn=t;this.wins=0;this.visits=0;this.children=[];this.untried=[];this.isTerminal=false;}}
         function runMCTS(b,w,rt,tb){
             let root=new MCTSNode(null,null,rt);
@@ -289,7 +286,6 @@
              return 3;
         }
 
-        // --- PVS & Search ---
         function storeKiller(depth, move) {
             if (KILLER[depth][0] && KILLER[depth][0].r === move.r && KILLER[depth][0].c === move.c) return;
             KILLER[depth][1] = KILLER[depth][0]; KILLER[depth][0] = move;
@@ -299,7 +295,6 @@
             let cands = getRankedCands(b, w, turn, 0, null, false);
             let bestMove = cands.length > 0 ? cands[0] : {r:7, c:7};
             
-            // Check immediate threats
             for (let m of cands) {
                  let p = BigInt(m.r * 15 + m.c);
                  if (turn === 1 && isForbidden(b | (1n << p), w, p)) continue;
@@ -415,11 +410,9 @@
         }
 
         function evalFull(my, opp) {
-             // simplified static eval
              return 0;
         }
 
-        // --- VCT/VCF Fixed Logic ---
         function solveVCT(b, w, turn, depth, path) {
             if (depth > 6 || Date.now() - startTime > 3000) return null; 
             let cands = getRankedCands(b, w, turn, 0, null, false).slice(0, 15);
@@ -473,7 +466,6 @@
              return null;
         }
 
-        // *** FIXED THREAT DETECTION ***
         function getThreatType(my, occ, pos) {
             let r = Number(pos / 15n), c = Number(pos % 15n);
             let fourFound = false; let threeFound = false;
@@ -535,7 +527,6 @@
             }
             return null;
         }
-        // 1. 후보 수를 평가하고 정렬하는 함수 (여기서 evalMoveUltra를 호출함)
         function getRankedCands(b, w, p, depth, ttMove, addNoise) {
             let occ = b | w; let my = p === 2 ? w : b; let opp = p === 2 ? b : w;
             let list = []; let k1 = null, k2 = null;
@@ -545,7 +536,6 @@
                 let r = Math.floor(i/15), c = i%15;
                 if (!hasNeighbor(occ, r, c)) continue;
                 
-                // [핵심] 여기서 새로운 평가 함수를 호출합니다!
                 let score = evalMoveUltra(my, opp, b, w, r, c, p);
                 
                 score += POS_WEIGHTS[i];
@@ -559,20 +549,28 @@
             return list.sort((x,y) => y.s - x.s).slice(0, 30); 
         }
 
-        // 2. 새로 만든 정밀 평가 함수 (Open 3 방어 로직 적용됨)
+        function hasNeighbor(occ, r, c) {
+             for(let dr=-2; dr<=2; dr++) for(let dc=-2; dc<=2; dc++) {
+                 if (dr===0 && dc===0) continue;
+                 let nr = r+dr, nc = c+dc;
+                 if (nr>=0 && nr<15 && nc>=0 && nc<15) if (occ & (1n << BigInt(nr*15+nc))) return true;
+             }
+             return false;
+        }
+        
+        // ===============================================
+        // [FIXED] evalMoveUltra with Stronger Defense
+        // ===============================================
         function evalMoveUltra(my, opp, b, w, r, c, p) {
             let score = 0; const occ = b | w;
-            
-            // 1. 나이트(날일자) 패턴 가산점
             const knightDirs = [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]];
             for(let [dr, dc] of knightDirs) {
                 let nr = r+dr, nc = c+dc;
-                if (nr>=0 && nr<15 && nc>=0 && nc<15 && (my & (1n << BigInt(nr*15+nc)))) score += 1000; 
+                if (nr>=0 && nr<15 && nc>=0 && nc<15 && (my & (1n << BigInt(nr*15+nc)))) score += 500; 
             }
-
-            // 2. 4방향(가로,세로,대각선) 정밀 분석
+            
             for (let dir of DIRECTIONS) {
-                // [A] 내 공격 (Attack)
+                // [A] Attack Analysis (My stones)
                 let l=0, r_cnt=0;
                 let lp = BigInt(r*15+c) - dir; 
                 while (lp>=0n && (my & (1n<<lp)) && isValid(lp, BigInt(r*15+c), dir)) { l++; lp-=dir; }
@@ -583,23 +581,18 @@
                 let r_open = (rp >= 0n && rp < 225n && !(occ & (1n << rp)) && isValid(rp, BigInt(r*15+c), dir));
 
                 let len = l + 1 + r_cnt;
-                
-                if (len >= 5) score += 1000000000; // 승리
-                else if (len === 4) {
-                    if (l_open || r_open) score += 300000000; // 공격: 4목
-                }
-                else if (len === 3) {
-                    if (l_open && r_open) score += 50000000; // 공격: Open 3
-                    else if (l_open || r_open) score += 500000;
-                }
+                if (len >= 5) score += 1000000000; 
+                else if (len === 4) { if (l_open || r_open) score += 300000000; else score += 1000000; }
+                else if (len === 3) { if (l_open && r_open) score += 50000000; else if (l_open || r_open) score += 500000; }
 
-                // [B] 상대 방어 (Defense) - 여기가 수정한 부분입니다!
+                // [B] Defense Analysis (Opponent stones) - FIXED LOGIC
                 let ol=0, or=0;
-                
+                // Check Left side for Opponent
                 lp = BigInt(r*15+c) - dir; 
                 while (lp>=0n && (opp & (1n<<lp)) && isValid(lp, BigInt(r*15+c), dir)) { ol++; lp-=dir; }
                 let ol_open = (lp >= 0n && lp < 225n && !(occ & (1n << lp)) && isValid(lp, BigInt(r*15+c), dir));
 
+                // Check Right side for Opponent
                 rp = BigInt(r*15+c) + dir; 
                 while (rp<225n && (opp & (1n<<rp)) && isValid(rp, BigInt(r*15+c), dir)) { or++; rp+=dir; }
                 let or_open = (rp >= 0n && rp < 225n && !(occ & (1n << rp)) && isValid(rp, BigInt(r*15+c), dir));
@@ -607,63 +600,31 @@
                 let straightLen = ol + 1 + or; 
 
                 if (straightLen >= 5) {
-                    score += 950000000; // 상대 승리 막기 (최우선)
+                    score += 950000000; // Must Block 5
                 }
                 else if (straightLen === 4) {
-                    // Open 3를 막아서 4가 되는 경우 (위험도: 최상)
-                    if (ol_open && or_open) score += 200000000; 
-                    // Closed 3를 막는 경우 (위험도: 중)
-                    else score += 40000000; 
+                    // Critical: Block Open 4 (lethal)
+                    if (ol_open || or_open) score += 300000000; 
+                    else score += 150000000; // Block Closed 4
                 }
                 else if (straightLen === 3) {
-                    // Open 2를 막는 경우 (위험도: 소)
-                    if (ol_open && or_open) score += 5000000; 
+                    // Critical Fix: Block Open 3 (lethal threat)
+                    if (ol_open && or_open) score += 250000000; // Higher Priority than before
+                    else if (ol_open || or_open) score += 20000000; 
                 }
-            }
-            return score;
-        }
-        
-        function hasNeighbor(occ, r, c) {
-             for(let dr=-2; dr<=2; dr++) for(let dc=-2; dc<=2; dc++) {
-                 if (dr===0 && dc===0) continue;
-                 let nr = r+dr, nc = c+dc;
-                 if (nr>=0 && nr<15 && nc>=0 && nc<15) if (occ & (1n << BigInt(nr*15+nc))) return true;
-             }
-             return false;
-        }
-        
-        function evalMoveUltra(my, opp, b, w, r, c, p) {
-            let score = 0; const occ = b | w;
-            const knightDirs = [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]];
-            for(let [dr, dc] of knightDirs) {
-                let nr = r+dr, nc = c+dc;
-                if (nr>=0 && nr<15 && nc>=0 && nc<15 && (my & (1n << BigInt(nr*15+nc)))) score += 500; 
-            }
-            for (let dir of DIRECTIONS) {
-                // --- BLOCKING OPPONENT LOGIC (Improved for Jumped 4s) ---
+                
+                // Pattern for Jumped 4s (e.g. 2 2 1 2 2)
+                // We check if opponent has 1-gap patterns
                 let pattern = "";
                 for(let k=-4; k<=4; k++) {
-                    if (k===0) { pattern += "1"; continue; } // My stone is 1 (blocker)
+                    if (k===0) { pattern += "1"; continue; } 
                     let p = BigInt(r*15+c) + BigInt(k)*dir;
                     if (isValid(p, BigInt(r*15+c), dir, k)) {
                         if ((opp >> p) & 1n) pattern += "2";
                         else if ((my >> p) & 1n) pattern += "1";
                         else pattern += "0";
-                    } else pattern += "1"; // Wall
+                    } else pattern += "1"; 
                 }
-                // Check if opponent had a 4 or 3 that is now blocked
-                // We simulate: if I wasn't there, would it be 5?
-                // A simpler way: Check length of '2's ignoring my '1' (treating my 1 as 2)
-                let ol=0, or=0;
-                let lp = BigInt(r*15+c) - dir; while (lp>=0n && (opp & (1n<<lp)) && isValid(lp, BigInt(r*15+c), dir)) { ol++; lp-=dir; }
-                let rp = BigInt(r*15+c) + dir; while (rp<225n && (opp & (1n<<rp)) && isValid(rp, BigInt(r*15+c), dir)) { or++; rp+=dir; }
-                let straightLen = ol + 1 + or;
-                
-                if (straightLen >= 5) score += 950000000;
-                else if (straightLen === 4) score += 150000000; 
-                else if (straightLen === 3 && ol>0 && or>0) score += 20000000; // Jumped 3 block
-
-                // Check Jumped 4 Block: "2 2 1 2 2" (Opponent was 2 2 _ 2 2)
                 if (pattern.includes("22122") || pattern.includes("21222") || pattern.includes("22212")) score += 900000000;
             }
             return score;
@@ -688,10 +649,8 @@
                 let lp = pos - dir; while (lp >= 0n && (b & (1n << lp)) && isValid(lp, pos, dir)) { left++; lp -= dir; }
                 let rp = pos + dir; while (rp < 225n && (b & (1n << rp)) && isValid(rp, pos, dir)) { right++; rp += dir; }
                 let len = left + 1 + right;
-                if (len > 5) return true; // Overline
+                if (len > 5) return true; 
 
-                // Pattern Matching for 3x3, 4x4 (Better than simple length)
-                // Extract 9 cells
                 let pat = "";
                 for(let k=-4; k<=4; k++) {
                      let p = pos + BigInt(k)*dir;
@@ -699,10 +658,7 @@
                          if ((b >> p) & 1n) pat += "1"; else if ((w >> p) & 1n) pat += "2"; else pat += "0";
                      } else pat += "2";
                 }
-                // Check 4s: 1111, 10111, 11011, 11101
                 if (pat.includes("1111") || pat.includes("10111") || pat.includes("11011") || pat.includes("11101")) fours++;
-                
-                // Check Open 3s: 01110, 010110, 011010
                 if (pat.includes("01110") || pat.includes("010110") || pat.includes("011010")) threes++;
             }
             return (threes >= 2 || fours >= 2);
@@ -743,62 +699,27 @@
             }
         };
 
-        // ==========================================
-        // [IMPROVED UI FORBIDDEN CHECK] 
-        // Handles Jumped 4s (10111) and Jumped 3s correctly
-        // ==========================================
         function checkForbidden(r, c) {
-            // Temporarily place black stone
-            let original = board[r][c];
-            board[r][c] = 1;
-
-            let threes = 0;
-            let fours = 0;
-            let overline = false;
-            
-            // Check all 4 directions
-            const dirs = [[0,1],[1,0],[1,1],[1,-1]]; // H, V, D1, D2
+            let original = board[r][c]; board[r][c] = 1;
+            let threes = 0; let fours = 0; let overline = false;
+            const dirs = [[0,1],[1,0],[1,1],[1,-1]]; 
             
             for (let [dr, dc] of dirs) {
-                // Get pattern string for window of 9 cells
-                // "1": Black, "2": White/Wall, "0": Empty
                 let pat = "";
                 for(let k=-4; k<=4; k++) {
-                    let nr = r + k*dr;
-                    let nc = c + k*dc;
+                    let nr = r + k*dr; let nc = c + k*dc;
                     if (nr >= 0 && nr < 15 && nc >= 0 && nc < 15) {
-                        if (board[nr][nc] === 1) pat += "1";
-                        else if (board[nr][nc] === 2) pat += "2";
-                        else pat += "0";
-                    } else {
-                        pat += "2"; // Wall is opponent
-                    }
+                        if (board[nr][nc] === 1) pat += "1"; else if (board[nr][nc] === 2) pat += "2"; else pat += "0";
+                    } else pat += "2";
                 }
-
-                // Check Overline (6 or more 1s consecutively)
-                // We just count max consecutive 1s in the pattern
                 let maxCon = 0; let curCon = 0;
-                for (let char of pat) {
-                    if (char === '1') curCon++;
-                    else { maxCon = Math.max(maxCon, curCon); curCon = 0; }
-                }
+                for (let char of pat) { if (char === '1') curCon++; else { maxCon = Math.max(maxCon, curCon); curCon = 0; } }
                 maxCon = Math.max(maxCon, curCon);
                 if (maxCon >= 6) overline = true;
-
-                // Check Fours: 1111, 10111, 11011, 11101 (Jumped 4s included!)
-                if (pat.includes("1111") || pat.includes("10111") || pat.includes("11011") || pat.includes("11101")) {
-                    fours++;
-                }
-
-                // Check Open Threes: 01110, 010110, 011010
-                if (pat.includes("01110") || pat.includes("010110") || pat.includes("011010")) {
-                    threes++;
-                }
+                if (pat.includes("1111") || pat.includes("10111") || pat.includes("11011") || pat.includes("11101")) fours++;
+                if (pat.includes("01110") || pat.includes("010110") || pat.includes("011010")) threes++;
             }
-            
-            // Revert
             board[r][c] = original;
-
             if (overline) return "6목 (장목)";
             if (fours >= 2) return "4-4 (쌍사)";
             if (threes >= 2) return "3-3 (쌍삼)";
@@ -823,11 +744,7 @@
         function placeStone(r, c, p) {
             if (board[r][c] !== 0) return;
             if (p === 1 && moveHistory.length === 0) {
-                if (r !== 7 || c !== 7) {
-                    forbiddenMsg.innerText = '⚠️ 규칙: 첫 수는 중앙(천원) 필수입니다.';
-                    shakeBoard();
-                    return;
-                }
+                if (r !== 7 || c !== 7) { forbiddenMsg.innerText = '⚠️ 규칙: 첫 수는 중앙(천원) 필수입니다.'; shakeBoard(); return; }
             }
             if (p === 1) { let err = checkForbidden(r, c); if (err) { forbiddenMsg.innerText = `❌ 금수 위치: ${err}`; shakeBoard(); return; } }
             board[r][c] = p; moveHistory.push({r, c, p}); hintPos = null; updateForbiddenMap(); drawBoard();
