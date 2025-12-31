@@ -128,8 +128,48 @@
         let nodes = 0; let mctsSims = 0; let startTime = 0;
         const TIME_LIMIT = 4000; const MAX_TT_SIZE = 5000000; 
         
-        // Basic Opening Book (Center only)
-        const BOOK = { "": {r:7, c:7} }; 
+        
+        const BOOK = {
+            "7,7|6,8|6,6": {r:5, c:7}, "7,7|6,8|6,6|5,7": {r:5, c:8}, 
+            "7,7|6,6|8,6": {r:5, c:5}, "7,7|6,6|8,8": {r:5, c:5},       
+            "7,7|7,8|6,8": {r:5, c:7}, "7,7|7,8|6,8|5,7": {r:5, c:8},
+            "7,7|5,6|4,5": {r:3, c:6}, "7,7|6,9|5,10": {r:4, c:9},      
+            "7,7|9,6|10,5": {r:8, c:4}, "7,7|5,8|4,9": {r:3, c:8},      
+            "7,7|6,7|6,6": {r:5, c:5}, "7,7|8,7|8,6": {r:9, c:5},       
+            "7,7|8,7|8,6|9,5": {r:7, c:5}, "7,7|7,5|6,4": {r:5, c:5},        
+            "7,7|5,7|4,6": {r:3, c:7}, "7,7|5,7|4,6|3,7": {r:5, c:5},
+            "7,7|5,7|4,6|3,7|5,5": {r:6, c:5}, "7,7|7,9|6,10": {r:5, c:9},      
+            "7,7|7,9|6,10|5,9": {r:5, c:8}, "7,7|9,7|10,6": {r:11, c:7},      
+            "7,7|7,4|6,3": {r:5, c:4}, "7,7|4,7|3,6": {r:2, c:7},        
+            "7,7|8,5|9,4": {r:7, c:3}, "7,7|9,9|10,10": {r:8, c:11},    
+            "7,7|5,5|4,4": {r:3, c:5}, "": {r:7, c:7} 
+        };
+        const INV_OP = [0, 3, 2, 1, 4, 5, 6, 7];
+        function transform(r, c, op) {
+            let nr = r - 7, nc = c - 7; let tr, tc;
+            switch(op) {
+                case 0: tr=nr; tc=nc; break; case 1: tr=nc; tc=-nr; break;
+                case 2: tr=-nr; tc=-nc; break; case 3: tr=-nc; tc=nr; break;
+                case 4: tr=nr; tc=-nc; break; case 5: tr=-nr; tc=nc; break;
+                case 6: tr=nc; tc=nr; break; case 7: tr=-nc; tc=-nr; break;
+            }
+            return {r: tr+7, c: tc+7};
+        }
+        function matchBook(history) {
+            if (history.length === 0) return BOOK[""];
+            for(let op=0; op<8; op++) {
+                let keyParts = []; let valid = true;
+                for(let m of history) {
+                    let t = transform(m.r, m.c, op);
+                    if (t.r < 0 || t.r > 14 || t.c < 0 || t.c > 14) { valid = false; break; }
+                    keyParts.push(t.r + "," + t.c);
+                }
+                if (!valid) continue;
+                let key = keyParts.join("|");
+                if (BOOK[key]) { let best = BOOK[key]; let invOp = INV_OP[op]; return transform(best.r, best.c, invOp); }
+            }
+            return null;
+        } 
 
         const POS_WEIGHTS = new Int32Array(225);
         for(let r=0; r<15; r++) for(let c=0; c<15; c++) {
