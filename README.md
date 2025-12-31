@@ -535,6 +535,7 @@
             }
             return null;
         }
+        // 1. 후보 수를 평가하고 정렬하는 함수 (여기서 evalMoveUltra를 호출함)
         function getRankedCands(b, w, p, depth, ttMove, addNoise) {
             let occ = b | w; let my = p === 2 ? w : b; let opp = p === 2 ? b : w;
             let list = []; let k1 = null, k2 = null;
@@ -543,7 +544,10 @@
                 if (occ & (1n << BigInt(i))) continue;
                 let r = Math.floor(i/15), c = i%15;
                 if (!hasNeighbor(occ, r, c)) continue;
+                
+                // [핵심] 여기서 새로운 평가 함수를 호출합니다!
                 let score = evalMoveUltra(my, opp, b, w, r, c, p);
+                
                 score += POS_WEIGHTS[i];
                 if (ttMove && ttMove.r === r && ttMove.c === c) score += 2000000000;
                 else if (k1 && k1.r === r && k1.c === c) score += 1000000000;
@@ -554,6 +558,71 @@
             }
             return list.sort((x,y) => y.s - x.s).slice(0, 30); 
         }
+
+        // 2. 새로 만든 정밀 평가 함수 (Open 3 방어 로직 적용됨)
+        function evalMoveUltra(my, opp, b, w, r, c, p) {
+            let score = 0; const occ = b | w;
+            
+            // 1. 나이트(날일자) 패턴 가산점
+            const knightDirs = [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]];
+            for(let [dr, dc] of knightDirs) {
+                let nr = r+dr, nc = c+dc;
+                if (nr>=0 && nr<15 && nc>=0 && nc<15 && (my & (1n << BigInt(nr*15+nc)))) score += 1000; 
+            }
+
+            // 2. 4방향(가로,세로,대각선) 정밀 분석
+            for (let dir of DIRECTIONS) {
+                // [A] 내 공격 (Attack)
+                let l=0, r_cnt=0;
+                let lp = BigInt(r*15+c) - dir; 
+                while (lp>=0n && (my & (1n<<lp)) && isValid(lp, BigInt(r*15+c), dir)) { l++; lp-=dir; }
+                let l_open = (lp >= 0n && lp < 225n && !(occ & (1n << lp)) && isValid(lp, BigInt(r*15+c), dir));
+                
+                let rp = BigInt(r*15+c) + dir; 
+                while (rp<225n && (my & (1n<<rp)) && isValid(rp, BigInt(r*15+c), dir)) { r_cnt++; rp+=dir; }
+                let r_open = (rp >= 0n && rp < 225n && !(occ & (1n << rp)) && isValid(rp, BigInt(r*15+c), dir));
+
+                let len = l + 1 + r_cnt;
+                
+                if (len >= 5) score += 1000000000; // 승리
+                else if (len === 4) {
+                    if (l_open || r_open) score += 300000000; // 공격: 4목
+                }
+                else if (len === 3) {
+                    if (l_open && r_open) score += 50000000; // 공격: Open 3
+                    else if (l_open || r_open) score += 500000;
+                }
+
+                // [B] 상대 방어 (Defense) - 여기가 수정한 부분입니다!
+                let ol=0, or=0;
+                
+                lp = BigInt(r*15+c) - dir; 
+                while (lp>=0n && (opp & (1n<<lp)) && isValid(lp, BigInt(r*15+c), dir)) { ol++; lp-=dir; }
+                let ol_open = (lp >= 0n && lp < 225n && !(occ & (1n << lp)) && isValid(lp, BigInt(r*15+c), dir));
+
+                rp = BigInt(r*15+c) + dir; 
+                while (rp<225n && (opp & (1n<<rp)) && isValid(rp, BigInt(r*15+c), dir)) { or++; rp+=dir; }
+                let or_open = (rp >= 0n && rp < 225n && !(occ & (1n << rp)) && isValid(rp, BigInt(r*15+c), dir));
+                
+                let straightLen = ol + 1 + or; 
+
+                if (straightLen >= 5) {
+                    score += 950000000; // 상대 승리 막기 (최우선)
+                }
+                else if (straightLen === 4) {
+                    // Open 3를 막아서 4가 되는 경우 (위험도: 최상)
+                    if (ol_open && or_open) score += 200000000; 
+                    // Closed 3를 막는 경우 (위험도: 중)
+                    else score += 40000000; 
+                }
+                else if (straightLen === 3) {
+                    // Open 2를 막는 경우 (위험도: 소)
+                    if (ol_open && or_open) score += 5000000; 
+                }
+            }
+            return score;
+        }
+        
         function hasNeighbor(occ, r, c) {
              for(let dr=-2; dr<=2; dr++) for(let dc=-2; dc<=2; dc++) {
                  if (dr===0 && dc===0) continue;
