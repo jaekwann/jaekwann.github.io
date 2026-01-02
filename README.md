@@ -31,7 +31,7 @@
     </style>
 </head>
 <body>
-    <div id="header"><h2>5-Digit AI Baseball (Entropy)</h2></div>
+    <div id="header"><h2>5-Digit AI Baseball</h2></div>
     <div id="status-bar">
         <div class="vs-wrapper">
             <div class="vs-item"><span class="vs-label">PLAYER WIN %</span><span class="vs-prob prob-player" id="player-prob">0%</span></div>
