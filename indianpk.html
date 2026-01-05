@@ -310,7 +310,7 @@ window.onload = function() {
     let txt = document.getElementById('loading-text');
     
     // 5000 Iterations with Linear Weighting
-    solver.train(5000, (pct) => {
+    solver.train(20000, (pct) => {
         let p = Math.min(100, Math.floor(pct*100));
         bar.style.width = p + '%';
         txt.innerHTML = `Applying Linear CFR... ${p}%`;
