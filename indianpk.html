@@ -234,6 +234,7 @@ class Solver {
 }
 
 /* --- 4. GAME STATE --- */
+/* --- 4. GAME STATE (수정됨) --- */
 class State {
     constructor(s0, s1, h1=null, h2=null) {
         if(h1 && h2) this.hands = [h1, h2];
@@ -241,11 +242,10 @@ class State {
         this.stacks = [s0-1, s1-1];
         this.bets = [1, 1];
         
-        // [FIX] Carried Pot 처리 로직 개선
         let carried = window.carriedPot || 0;
         this.pot = 2 + carried;
         this.wasCarried = carried > 0;
-        window.carriedPot = 0; // 초기화
+        window.carriedPot = 0; 
         
         this.contrib = [1, 1];
         this.hist = [];
@@ -269,28 +269,58 @@ class State {
     apply(a, customAmt = -1) {
         this.hist.push(a);
         if(a===ACT.FOLD) { this.done = true; return; }
+        
         let me = this.turn, opp = 1-me;
         let diff = this.bets[opp] - this.bets[me];
         let amt = 0;
 
+        // [FIX 1] 올인 및 베팅 금액 계산 로직 수정 (상대 스택에 맞춤)
         if (customAmt > 0) {
-            amt = Math.min(this.stacks[me], customAmt);
+            // 커스텀 베팅이라도 상대방의 전재산보다 많이 걸 필요는 없음 (유효 스택 적용)
+            let effectiveMax = this.stacks[opp] + diff; 
+            // 내 스택, 커스텀 금액, 그리고 (상대 스택 + 차액) 중 가장 작은 값
+            amt = Math.min(this.stacks[me], customAmt, effectiveMax); 
         } else {
-            amt = (a===ACT.CHECK) ? Math.min(diff, this.stacks[me]) :
-                  (a===ACT.ALLIN) ? this.stacks[me] :
-                  Math.min(this.stacks[me], diff + Math.floor((this.pot+diff)*MULTS[a]));
+            if (a === ACT.CHECK) {
+                amt = Math.min(diff, this.stacks[me]);
+            } else if (a === ACT.ALLIN) {
+                // [FIX 2] 내 올인 금액은 '내 전재산'과 '상대방의 총 자산(스택+베팅)' 중 작은 쪽으로 제한
+                let myTotal = this.stacks[me] + this.bets[me];
+                let oppTotal = this.stacks[opp] + this.bets[opp];
+                let effectiveStack = Math.min(myTotal, oppTotal);
+                amt = effectiveStack - this.bets[me];
+            } else {
+                // 하프/팟 베팅
+                amt = Math.min(this.stacks[me], diff + Math.floor((this.pot+diff)*MULTS[a]));
+            }
         }
         
-        this.stacks[me] -= amt; this.bets[me] += amt; this.contrib[me] += amt; this.pot += amt;
+        // 칩 이동 처리
+        this.stacks[me] -= amt; 
+        this.bets[me] += amt; 
+        this.contrib[me] += amt; 
+        this.pot += amt;
         
-        if(this.bets[0]===this.bets[1] && this.hist.length>=1) {
+        // [FIX 3] 종료 조건 강화
+        // 1. 상대가 올인 상태(스택 0)이고, 내가 그 금액을 커버했으면(같거나 많이 냈으면) 종료
+        if (this.stacks[opp] <= 0 && this.bets[me] >= this.bets[opp]) {
+            this.done = true;
+        }
+        // 2. 내가 올인 상태이고, 상대가 내 금액을 커버했으면 종료
+        else if (this.stacks[me] <= 0 && this.bets[opp] >= this.bets[me]) {
+            this.done = true;
+        }
+        // 3. 기존 로직: 베팅액이 같고 액션이 오갔으면 종료
+        else if(this.bets[0]===this.bets[1] && this.hist.length>=1) {
             if(a===ACT.CHECK || a===ACT.FOLD || diff > 0 || (customAmt === diff)) { 
                  if(this.hist.length>=2 || diff>0) this.done = true; 
             }
         }
+
         if(!this.done) this.turn = opp;
     }
-
+    
+    // ... payoff, clone 메서드는 기존과 동일 ...
     payoff(p) {
         let opp = 1-p;
         let last = this.hist[this.hist.length-1];
@@ -309,7 +339,6 @@ class State {
     
     clone() {
         let s = new State(0,0);
-        // [FIX] Deep Copy for objects in array
         s.hands = this.hands.map(h => ({...h})); 
         s.stacks=[...this.stacks]; s.bets=[...this.bets];
         s.pot=this.pot; s.contrib=[...this.contrib]; s.hist=[...this.hist]; 
@@ -655,4 +684,5 @@ function addBadge(el, txt, cls) {
 </script>
 </body>
 </html>
+
 
