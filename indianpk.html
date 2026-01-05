@@ -567,58 +567,83 @@ function actCustom() {
 }
 
 function endRound() {
-    let p = game.payoff(1); updateUI(true);
+    updateUI(true); // 카드 공개
+
+    // 1. 승패 판정
+    let r0 = game.hands[0].r, r1 = game.hands[1].r;
+    let winner = -1; // -1: 무승부, 0: AI 승, 1: 플레이어 승
     let last = game.hist[game.hist.length-1];
+
+    if(last === ACT.FOLD) {
+        winner = 1 - game.turn; // 폴드한 사람의 반대편이 승리
+    } else {
+        // 쇼다운 판정 (혁명 포함)
+        if((r0===1 && r1===10)) winner = 0;      // AI 혁명 승
+        else if((r0===10 && r1===1)) winner = 1; // 플레이어 혁명 승
+        else if(r0 > r1) winner = 0;
+        else if(r1 > r0) winner = 1;
+    }
+
+    // 2. 칩 정산 (사이드 팟 로직 적용)
+    // 일단 판돈을 다 걷어갔다고 가정하고 시작
+    chips[0] -= game.contrib[0];
+    chips[1] -= game.contrib[1];
+
+    // 초과 베팅금(Excess) 계산: 더 많이 베팅한 사람에게 즉시 환불
+    let excess = Math.abs(game.contrib[0] - game.contrib[1]);
+    if(game.contrib[0] > game.contrib[1]) chips[0] += excess;
+    else chips[1] += excess;
+
+    // 실제 승부 팟 (초과금을 제외한 금액 + 이월된 팟이 있다면 포함)
+    let mainPot = game.pot - excess;
+
     let aiCard = document.getElementById('c-ai');
     let myCard = document.getElementById('c-me');
 
-    // [UPDATE] 블러핑 통계 수집
-    // 조건: 쇼다운까지 감(Fold 아님) AND 상대(나)가 짐 AND 내 카드가 6 이하
-    if(last !== ACT.FOLD) {
-        let myRank = game.hands[1].r;
-        let aiRank = game.hands[0].r;
-        let iLost = false;
-        
-        // 패배 조건 계산
-        if((myRank===1 && aiRank===10)); // 승리
-        else if((myRank===10 && aiRank===1)); // 패배
-        else if(myRank < aiRank) iLost = true;
-
-        if (iLost) {
-            userStats.bluffOpportunities++;
-            // 낮은 패로 공격적으로 베팅했는지 확인 (베팅 총액이 높음)
-            if (game.contrib[1] > 10 && myRank <= 6) {
-                userStats.bluffsDetected++;
-                log(`🕵️ Bluff Detected! (Rank ${myRank})`, 'l-sys');
-            }
-        }
-    }
-
+    // 3. 결과 처리 및 배지 부착
+    // [폴드 패널티 체크]
     if(last === ACT.FOLD) {
         let folder = game.turn;
         if(game.hands[folder].r === 10) {
             addBadge(folder===0?aiCard:myCard, "-10 PENALTY", 'bg-pen');
             log("🚨 10-Holding Penalty!", "l-warn");
+            // 패널티는 팟 계산과 별개로 게임 종료 후 차감하거나 구현 방식에 따라 다르지만,
+            // 여기서는 10을 들고 죽은 것이 발각된 것만 표시합니다.
         }
     } else {
-        let r0 = game.hands[0].r, r1 = game.hands[1].r;
+        // [혁명 배지]
         if( (r0===1 && r1===10) || (r0===10 && r1===1) ) {
             log("⚡ REVOLUTION! (1 > 10)", "l-warn");
-            addBadge(r0===1?aiCard:myCard, "1 > 10 WIN", 'bg-rev');
+            addBadge(winner===0?aiCard:myCard, "1 > 10 WIN", 'bg-rev');
         }
     }
 
-    if(p>0) { 
-        log(`🎉 WIN (+${p})`, 'l-user'); myCard.classList.add('winner'); aiCard.classList.add('loser'); 
-        chips[1]+=p; chips[0]-=p;
+    // [블러핑 감지 로직]
+    if(last !== ACT.FOLD && winner === 0 && r1 <= 6 && game.contrib[1] > 10) {
+         userStats.bluffOpportunities++;
+         userStats.bluffsDetected++;
+         log(`🕵️ Bluff Detected! (Rank ${r1})`, 'l-sys');
+    } else if (last !== ACT.FOLD && winner === 0) {
+         userStats.bluffOpportunities++;
     }
-    else if(p<0) { 
-        log(`💀 LOSE (${p})`, 'l-ai'); aiCard.classList.add('winner'); myCard.classList.add('loser'); 
-        chips[1]+=p; chips[0]-=p;
-    }
-    else {
-        window.carriedPot = game.pot;
-        log(`🤝 DRAW - Pot (${game.pot}) Carried Over!`, 'l-sys');
+
+    // 4. 팟 분배
+    if(winner === 0) { // AI 승리
+        log(`💀 LOSE (-${(mainPot - game.contrib[0]).toFixed(0)})`, 'l-ai');
+        aiCard.classList.add('winner'); myCard.classList.add('loser');
+        chips[0] += mainPot;
+        window.carriedPot = 0;
+    } 
+    else if(winner === 1) { // 플레이어 승리
+        log(`🎉 WIN (+${(mainPot - game.contrib[1]).toFixed(0)})`, 'l-user');
+        myCard.classList.add('winner'); aiCard.classList.add('loser');
+        chips[1] += mainPot;
+        window.carriedPot = 0;
+    } 
+    else { // 무승부
+        log(`🤝 DRAW - Pot (${mainPot}) Carried Over!`, 'l-sys');
+        window.carriedPot = mainPot;
+        // 무승부 시 칩은 돌려주지 않고 다음 판 팟으로 이월 (chips에는 더하지 않음)
     }
 
     setTimeout(startRound, 2500);
@@ -630,3 +655,4 @@ function addBadge(el, txt, cls) {
 </script>
 </body>
 </html>
+
