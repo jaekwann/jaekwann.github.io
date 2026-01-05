@@ -659,6 +659,21 @@ function endRound() {
     chips[0] -= game.contrib[0];
     chips[1] -= game.contrib[1];
 
+    if(last === ACT.FOLD) {
+        let folder = game.turn; // 죽은 사람
+        // 죽은 사람 패가 10이면 패널티 부과
+        if(game.hands[folder].r === 10) {
+            // 패널티 10개를 뺏어서 상대에게 줌
+            if(folder === 0) { 
+                chips[0] -= 10; 
+                chips[1] += 10; 
+            } else { 
+                chips[1] -= 10; 
+                chips[0] += 10; 
+            }
+        }
+    }
+
     // 초과 베팅금(Excess) 계산: 더 많이 베팅한 사람에게 즉시 환불
     // (이전 답변의 All-in 로직으로 인해 발생 빈도는 줄었으나 안전장치로 유지)
     let excess = Math.abs(game.contrib[0] - game.contrib[1]);
