@@ -561,7 +561,7 @@ if (effectiveBluffRate > 0.3 && equity > 0.3 && equity < 0.65 && requiredEquity 
 }
 
     // 1. 기본 Bias (승률 기반)
-    let bias = (equity - 0.5) * 2.0;
+    let bias = (equity - 0.5) * 2.35;
     if(bias > 0) {
         [ACT.BET_H, ACT.BET_P, ACT.ALLIN].forEach(a => { if(valid.includes(a)) strat[a]*=(1+bias*1.5); });
         if(valid.includes(ACT.FOLD)) strat[ACT.FOLD]*=(1-bias*0.8);
@@ -762,3 +762,4 @@ function addBadge(el, txt, cls) {
 </script>
 </body>
 </html>
+
