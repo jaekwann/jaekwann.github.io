@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Indian Hold'em AI : Exploitative Master</title>
+    <title>Indian Hold'em : Pro Edition</title>
     <style>
-        :root { --bg-color: #121212; --table-bg: #1b5e20; --card-bg: #eee; --accent: #ffd700; --danger: #ef5350; }
+        :root { --bg-color: #121212; --table-bg: #1b5e20; --card-bg: #eee; --accent: #ffd700; --danger: #ef5350; --btn-primary: #1565c0; }
         body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg-color); color: #e0e0e0; margin: 0; display: flex; justify-content: center; min-height: 100vh; overflow: hidden; }
         
         .container { width: 100%; max-width: 480px; background: #1e1e1e; display: flex; flex-direction: column; height: 100vh; position: relative; box-shadow: 0 0 30px rgba(0,0,0,0.8); }
@@ -15,13 +15,16 @@
         .loader-bar-box { width: 70%; height: 6px; background: #333; border-radius: 3px; margin-top: 15px; overflow: hidden; }
         .loader-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #ffd700, #ff8f00); transition: width 0.2s; }
         
-        /* Header & Table */
-        .header { padding: 15px; background: #263238; border-bottom: 2px solid #43a047; display: flex; justify-content: space-between; font-weight: bold; font-size: 1.1em; }
+        /* Header */
+        .header { padding: 15px; background: #263238; border-bottom: 2px solid #43a047; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 1.1em; }
+        .deck-info { background: #000; padding: 5px 12px; border-radius: 15px; font-size: 0.85em; color: var(--accent); border: 1px solid #444; box-shadow: inset 0 0 5px rgba(0,0,0,0.5); }
+
+        /* Table */
         .table { flex: 1; background: radial-gradient(circle at center, #2e7d32 0%, #1b5e20 80%); position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; }
         
         /* Pot & Status */
         .pot-box { background: rgba(0,0,0,0.6); padding: 8px 25px; border-radius: 30px; border: 1px solid var(--accent); color: var(--accent); font-weight: bold; font-size: 1.4em; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        .status-msg { color: #bdbdbd; font-style: italic; font-size: 0.9em; min-height: 1.2em; margin-bottom: 10px;}
+        .status-msg { color: #bdbdbd; font-style: italic; font-size: 0.9em; min-height: 1.2em; margin-bottom: 10px; text-align: center; }
 
         /* Players & Cards */
         .play-area { display: flex; width: 100%; justify-content: space-around; align-items: center; margin: 10px 0; }
@@ -36,37 +39,43 @@
         .card.red { color: #c62828; } .card.black { color: #212121; }
         .card.hidden { background: repeating-linear-gradient(45deg, #455a64, #455a64 10px, #37474f 10px, #37474f 20px); color: transparent; border: 2px solid #546e7a; }
         
-        /* Visual Effects */
+        .badge { position: absolute; top: -12px; right: -12px; color: white; font-size: 0.6em; padding: 4px 6px; border-radius: 8px; font-weight: bold; border:2px solid white; animation: popIn 0.3s; z-index: 20; white-space: nowrap; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+        .bg-pen { background: var(--danger); }
+        .bg-rev { background: #7b1fa2; }
         .card.winner { transform: scale(1.15); box-shadow: 0 0 25px var(--accent); border: 3px solid var(--accent); z-index: 10; }
         .card.loser { opacity: 0.5; filter: grayscale(100%); transform: scale(0.9); }
-        .penalty-badge { position: absolute; top: -12px; right: -12px; background: var(--danger); color: white; font-size: 0.7em; padding: 4px 8px; border-radius: 10px; font-weight: bold; border:2px solid white; animation: popIn 0.3s; z-index: 20; }
 
-        /* AI Thought Bubble */
+        /* AI Thought */
         .ai-brain { 
             width: 90%; background: rgba(255,255,255,0.92); color: #222; padding: 12px; 
             border-radius: 12px; margin-bottom: 20px; font-size: 0.85em; box-shadow: 0 10px 25px rgba(0,0,0,0.4);
             display: none; transform-origin: bottom; animation: floatUp 0.4s;
         }
-        .bars { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin-top: 8px; background: #e0e0e0; }
-        .bar-seg { height: 100%; transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
-        .b-low { background: #e53935; } .b-mid { background: #fdd835; } .b-high { background: #43a047; }
-        .labels { display: flex; justify-content: space-between; font-size: 0.7em; color: #555; margin-top: 4px; font-weight: bold; }
 
-        /* Controls */
-        .controls { padding: 15px; background: #1e1e1e; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; border-top: 1px solid #333; }
-        button { padding: 14px 5px; border: none; border-radius: 8px; color: white; font-weight: bold; font-size: 0.95em; cursor: pointer; transition: transform 0.1s; box-shadow: 0 4px 0 rgba(0,0,0,0.2); }
+        /* Controls (Updated for Slider) */
+        .controls { padding: 15px; background: #1e1e1e; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid #333; }
+        
+        .btn-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        
+        .slider-box { display: flex; align-items: center; gap: 10px; background: #111; padding: 8px; border-radius: 8px; border: 1px solid #333; }
+        input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+        
+        button { padding: 12px 2px; border: none; border-radius: 6px; color: white; font-weight: bold; font-size: 0.9em; cursor: pointer; transition: transform 0.1s; box-shadow: 0 3px 0 rgba(0,0,0,0.3); }
         button:active { transform: scale(0.96) translateY(2px); box-shadow: 0 0 0; }
         button:disabled { opacity: 0.3; cursor: not-allowed; transform: none; box-shadow: none; filter: grayscale(100%); }
         
-        .btn-fold { grid-column: span 1; background: #c62828; }
-        .btn-check { grid-column: span 1; background: #2e7d32; }
-        .btn-bet { background: #1565c0; }
-        .btn-allin { grid-column: span 4; background: #6a1b9a; margin-top: 5px; background: linear-gradient(45deg, #7b1fa2, #4a148c); }
+        .btn-fold { background: #c62828; }
+        .btn-check { background: #2e7d32; }
+        .btn-half { background: #1565c0; }
+        .btn-pot { background: #0277bd; }
+        .btn-allin { background: #6a1b9a; grid-column: span 1; }
+        
+        .btn-custom { width: 90px; background: var(--accent); color: #000; font-size: 0.85em; padding: 8px; }
 
         /* Logs */
-        .logs { height: 120px; overflow-y: auto; background: #111; padding: 10px; font-size: 0.8em; color: #bbb; border-top: 1px solid #333; scrollbar-width: thin; }
+        .logs { height: 100px; overflow-y: auto; background: #000; padding: 10px; font-size: 0.8em; color: #bbb; border-top: 1px solid #333; scrollbar-width: thin; }
         .log-row { margin-bottom: 4px; border-bottom: 1px solid #222; padding-bottom: 2px; }
-        .l-ai { color: #ffca28; } .l-user { color: #42a5f5; } .l-sys { color: #90a4ae; font-style: italic; } .l-warn { color: #ef5350; font-weight: bold; }
+        .l-ai { color: #ffca28; } .l-user { color: #42a5f5; } .l-sys { color: #90a4ae; font-style: italic; } .l-warn { color: #ef5350; font-weight: bold; } .l-deck { color: #00e676; }
 
         @keyframes popIn { 0% {transform: scale(0);} 80% {transform: scale(1.2);} 100% {transform: scale(1);} }
         @keyframes floatUp { from {opacity:0; transform:translateY(15px);} to {opacity:1; transform:translateY(0);} }
@@ -76,31 +85,24 @@
 
 <div class="container">
     <div id="loading-screen">
-        <div style="color:var(--accent); font-weight:bold; font-size:1.4em; text-shadow: 0 0 10px rgba(255,215,0,0.5);">Indian Hold'em AI</div>
-        <div style="color:#aaa; font-size:0.9em; margin-bottom:20px;">Master Edition</div>
+        <div style="color:var(--accent); font-weight:bold; font-size:1.4em; text-shadow: 0 0 10px rgba(255,215,0,0.5);">Indian Hold'em</div>
+        <div style="color:#aaa; font-size:0.9em; margin-bottom:20px;">Pro Edition</div>
         <div class="loader-bar-box"><div class="loader-bar" id="load-bar"></div></div>
-        <div style="color:#777; font-size:0.8em; margin-top:10px;">Training Hands (30,000 Hands)...</div>
+        <div style="color:#777; font-size:0.8em; margin-top:10px;">AI Training...</div>
     </div>
 
     <div class="header">
-        <div>🤖 AI: <span id="s-ai">100</span></div>
-        <div style="color:#888;">Round <span id="r-num">1</span></div>
-        <div>👤 You: <span id="s-me">100</span></div>
+        <div>🤖 <span id="s-ai">100</span></div>
+        <div class="deck-info" id="deck-ui">Deck: 20</div>
+        <div>👤 <span id="s-me">100</span></div>
     </div>
 
     <div class="table">
         <div class="ai-brain" id="ai-thought">
-            <div id="ai-text">Analyzing betting pattern...</div>
-            <div style="margin-top:6px; font-weight:bold; color:#333; display:flex; justify-content:space-between;">
-                <span>My Estimated Hand:</span>
-                <span id="exploit-indicator" style="font-size:0.8em; color:#d32f2f; display:none;">(Adapting to You)</span>
+            <div id="ai-text">Thinking...</div>
+            <div style="height:4px; background:#ddd; margin-top:4px; border-radius:2px; overflow:hidden;">
+                <div id="win-rate-bar" style="width:50%; height:100%; background:#43a047;"></div>
             </div>
-            <div class="bars">
-                <div class="bar-seg b-low" id="b-low" style="width:33%"></div>
-                <div class="bar-seg b-mid" id="b-mid" style="width:33%"></div>
-                <div class="bar-seg b-high" id="b-high" style="width:33%"></div>
-            </div>
-            <div class="labels"><span>Weak (1-5)</span><span>Mid (6-8)</span><span>Strong (9-10)</span></div>
         </div>
 
         <div class="pot-box">POT: <span id="pot">2.0</span></div>
@@ -120,44 +122,55 @@
     </div>
 
     <div class="controls">
-        <button class="btn-fold" onclick="act(0)">Fold</button>
-        <button class="btn-check" id="btn-chk" onclick="act(1)">Check</button>
-        <button class="btn-bet" onclick="act(2)">Bet 33%</button>
-        <button class="btn-bet" onclick="act(3)">Bet 75%</button>
-        <button class="btn-allin" onclick="act(5)">ALL IN</button>
+        <div class="slider-box">
+            <input type="range" id="bet-slider" min="1" max="100" value="1" oninput="updateSliderBtn()">
+            <button class="btn-custom" id="btn-custom" onclick="actCustom()">Bet 1</button>
+        </div>
+        
+        <div class="btn-grid">
+            <button class="btn-fold" onclick="act(0)">Fold</button>
+            <button class="btn-check" id="btn-chk" onclick="act(1)">Check</button>
+            <button class="btn-half" onclick="act(2)">50%</button>
+            <button class="btn-pot" onclick="act(3)">Pot</button>
+        </div>
+        <div class="btn-grid">
+             <button class="btn-allin" onclick="act(5)" style="grid-column: span 4; background: linear-gradient(45deg, #7b1fa2, #4a148c);">ALL IN</button>
+        </div>
     </div>
     
     <div class="logs" id="log-box"></div>
 </div>
 
 <script>
-/* --- 1. SETTINGS & SOUNDS --- */
+/* --- 1. SETTINGS --- */
 const RANKS = [1,2,3,4,5,6,7,8,9,10];
-const SUITS = ['s','h','d','c'];
-const ACT = { FOLD:0, CHECK:1, BET_S:2, BET_L:3, BET_O:4, ALLIN:5 };
-const ACT_TXT = ["Fold", "Check/Call", "Bet Small", "Bet Large", "Overbet", "All-In"];
-const MULTS = { 2:0.33, 3:0.75, 4:1.5, 5:999 };
+const ACT = { FOLD:0, CHECK:1, BET_H:2, BET_P:3, BET_O:4, ALLIN:5 };
+const ACT_TXT = ["Fold", "Check/Call", "Bet Half", "Bet Pot", "Overbet", "All-In"];
+// Changed to Standard Poker Sizes
+const MULTS = { 2:0.5, 3:1.0, 4:1.5, 5:999 }; 
 
-// 사운드 플레이어 (파일이 없어도 에러 안 나도록 처리)
-const sounds = {
-    bet: new Audio('bet.mp3'), win: new Audio('win.mp3'),
-    lose: new Audio('lose.mp3'), fold: new Audio('fold.mp3')
-};
-function playSound(k) {
-    if(sounds[k]) {
-        let s = sounds[k].cloneNode(); s.volume = 0.4;
-        s.play().catch(()=>{}); // 브라우저 정책상 실패시 무시
+/* --- 2. SHOE SYSTEM --- */
+const shoe = {
+    cards: [], max: 20,
+    init: function() {
+        this.cards = [];
+        for(let i=0; i<2; i++) for(let r=1; r<=10; r++) this.cards.push({r, s: i===0?'s':'h'});
+        for(let i=this.cards.length-1; i>0; i--) { let j=Math.floor(Math.random()*(i+1)); [this.cards[i],this.cards[j]]=[this.cards[j],this.cards[i]]; }
+        log("🔄 Deck Reshuffled", "l-deck"); updateDeckUI();
+    },
+    draw: function() {
+        if(this.cards.length < 2) this.init();
+        let c = this.cards.pop(); updateDeckUI(); return c;
     }
+};
+
+function updateDeckUI() {
+    let el = document.getElementById('deck-ui');
+    el.innerText = `Deck: ${shoe.cards.length}/${shoe.max}`;
+    el.style.borderColor = shoe.cards.length <= 6 ? "#ef5350" : "#444";
 }
 
-/* --- 2. USER STATISTICS (EXPLOITATION DATA) --- */
-const userStats = {
-    totalHands: 0,
-    foldCount: 0,
-    getFoldRate: function() { return this.totalHands < 1 ? 0 : this.foldCount / this.totalHands; }
-};
-
-/* --- 3. SOLVER ENGINE (MCCFR) --- */
+/* --- 3. SOLVER (AI) --- */
 class Node {
     constructor(n) { this.r = new Float32Array(n); this.s = new Float32Array(n); }
     getStrat() {
@@ -174,20 +187,6 @@ class Solver {
     constructor() { this.nodes = {}; }
     getNode(key) { if(!this.nodes[key]) this.nodes[key] = new Node(6); return this.nodes[key]; }
     
-    // Pre-trained 데이터 로드용 메서드
-    load(jsonStr) {
-        try {
-            let d = JSON.parse(jsonStr);
-            for(let k in d) {
-                let n = new Node(6);
-                n.r = new Float32Array(Object.values(d[k].r));
-                n.s = new Float32Array(Object.values(d[k].s));
-                this.nodes[k] = n;
-            }
-            return true;
-        } catch(e) { console.error("Load Failed", e); return false; }
-    }
-
     async train(iters, cb) {
         for(let i=0; i<iters; i+=100) {
             for(let j=0; j<100; j++) {
@@ -204,11 +203,9 @@ class Solver {
         if(st.done) return st.payoff(p);
         let valid = st.validActs();
         if(valid.length===0) return 0;
-
         let key = `Opp:${st.hands[1-st.turn].r}|Seq:${st.hist.join('')}`;
         let node = this.getNode(key);
         let strat = node.getStrat();
-        
         let probs = new Float32Array(6), sum = 0;
         valid.forEach(a => { probs[a] = strat[a]; sum += strat[a]; });
         if(sum>0) probs = probs.map(v=>v/sum); else valid.forEach(a=>probs[a]=1/valid.length);
@@ -234,21 +231,17 @@ class Solver {
     }
 }
 
-/* --- 4. GAME STATE (RULES) --- */
+/* --- 4. GAME STATE --- */
 class State {
-    constructor(s0, s1) {
-        let deck = [];
-        for(let r of RANKS) for(let s of SUITS) deck.push({r,s});
-        for(let i=deck.length-1; i>0; i--) { let j=Math.floor(Math.random()*(i+1)); [deck[i],deck[j]]=[deck[j],deck[i]]; }
-        
-        this.hands = [deck.pop(), deck.pop()];
+    constructor(s0, s1, h1=null, h2=null) {
+        if(h1 && h2) this.hands = [h1, h2];
+        else { let d=[]; for(let r of RANKS)d.push({r,s:'x'}); this.hands=[d[Math.floor(Math.random()*10)],d[Math.floor(Math.random()*10)]]; }
         this.stacks = [s0-1, s1-1];
         this.bets = [1, 1];
         this.pot = 2;
         this.contrib = [1, 1];
         this.hist = [];
-        this.turn = 1; 
-        this.done = false;
+        this.turn = 1; this.done = false;
     }
 
     validActs() {
@@ -257,8 +250,7 @@ class State {
         let acts = [ACT.FOLD, ACT.CHECK];
         let diff = this.bets[opp] - this.bets[me];
         let target = this.pot + diff;
-        
-        for(let a of [2,3,5]) {
+        for(let a of [2,3,5]) { // AI uses Standard Buckets (Half, Pot, Allin)
             if(a===ACT.ALLIN) { acts.push(a); continue; }
             let raise = target * MULTS[a];
             if(diff+raise < this.stacks[me] && raise >= 1) acts.push(a);
@@ -266,19 +258,31 @@ class State {
         return acts;
     }
 
-    apply(a) {
+    apply(a, customAmt = -1) {
         this.hist.push(a);
         if(a===ACT.FOLD) { this.done = true; return; }
-        
         let me = this.turn, opp = 1-me;
         let diff = this.bets[opp] - this.bets[me];
-        let amt = (a===ACT.CHECK) ? Math.min(diff, this.stacks[me]) :
+        let amt = 0;
+
+        if (customAmt > 0) {
+            // Slider Bet (Custom Amount)
+            amt = Math.min(this.stacks[me], customAmt);
+        } else {
+            // Standard Button Bet
+            amt = (a===ACT.CHECK) ? Math.min(diff, this.stacks[me]) :
                   (a===ACT.ALLIN) ? this.stacks[me] :
-                  Math.min(this.stacks[me], diff + (this.pot+diff)*MULTS[a]);
+                  Math.min(this.stacks[me], diff + Math.floor((this.pot+diff)*MULTS[a]));
+        }
         
         this.stacks[me] -= amt; this.bets[me] += amt; this.contrib[me] += amt; this.pot += amt;
-        if(a===ACT.CHECK && this.bets[0]===this.bets[1] && this.hist.length>=1) {
-            if(this.hist.length>=2 || diff>0) this.done = true;
+        
+        // Round End Condition
+        if(this.bets[0]===this.bets[1] && this.hist.length>=1) {
+            // Check-Check or Bet-Call
+            if(a===ACT.CHECK || a===ACT.FOLD || diff > 0 || (customAmt === diff)) { 
+                 if(this.hist.length>=2 || diff>0) this.done = true; 
+            }
         }
         if(!this.done) this.turn = opp;
     }
@@ -286,21 +290,17 @@ class State {
     payoff(p) {
         let opp = 1-p;
         let last = this.hist[this.hist.length-1];
-        
-        // ★ [Rule Update] 10 패널티 로직
         if(last === ACT.FOLD) {
-            let folder = this.turn; // Fold를 한 사람
-            let winner = 1-folder;
+            let folder = this.turn;
             let penalty = (this.hands[folder].r === 10) ? 10 : 0;
-            
-            if(p === winner) return (this.pot - this.contrib[p]) + penalty;
-            else return -this.contrib[p] - penalty;
+            return (p === (1-folder) ? (this.pot-this.contrib[p]) + penalty : -this.contrib[p] - penalty);
         }
-        
-        let r1 = this.hands[p].r, r2 = this.hands[opp].r;
-        if(r1 > r2) return this.pot - this.contrib[p];
-        if(r1 < r2) return -this.contrib[p];
-        return 0; 
+        let r1=this.hands[p].r, r2=this.hands[opp].r;
+        if(r1===1 && r2===10) return this.pot-this.contrib[p];
+        if(r1===10 && r2===1) return -this.contrib[p];
+        if(r1>r2) return this.pot-this.contrib[p];
+        if(r1<r2) return -this.contrib[p];
+        return 0;
     }
     
     clone() {
@@ -312,33 +312,20 @@ class State {
     }
 }
 
-/* --- 5. UI & CONTROLLER --- */
+/* --- 5. CONTROLLER --- */
 const solver = new Solver();
-let game = null, round = 0;
-let chips = [100, 100]; // 0: AI, 1: User
-
-// ★ Pre-trained Data가 있다면 여기서 로드, 없으면 학습
-const PRE_TRAINED = ""; // 여기에 JSON 문자열 넣으면 학습 생략 가능
+const userStats = { totalHands:0, foldCount:0, getFoldRate: function(){return this.totalHands<1?0:this.foldCount/this.totalHands;} };
+let game = null, round = 0, chips = [100, 100];
 
 window.onload = () => {
-    if(PRE_TRAINED.length > 100 && solver.load(PRE_TRAINED)) {
-        document.getElementById('loading-screen').style.display = 'none';
-        startRound();
-    } else {
-        solver.train(30000, (pct) => {
-            document.getElementById('load-bar').style.width = (pct*100)+'%';
-        }).then(() => {
-            document.getElementById('loading-screen').style.display = 'none';
-            startRound();
-        });
-    }
+    shoe.init();
+    solver.train(30000, (pct) => { document.getElementById('load-bar').style.width = (pct*100)+'%'; })
+          .then(() => { document.getElementById('loading-screen').style.display = 'none'; startRound(); });
 };
 
 function log(msg, cls) {
-    let div = document.createElement('div');
-    div.className = 'log-row '+cls; div.innerText = msg;
-    let box = document.getElementById('log-box');
-    box.appendChild(div); box.scrollTop = box.scrollHeight;
+    let div = document.createElement('div'); div.className='log-row '+cls; div.innerText=msg;
+    let box = document.getElementById('log-box'); box.appendChild(div); box.scrollTop = box.scrollHeight;
 }
 
 function updateUI(showHidden = false) {
@@ -347,196 +334,190 @@ function updateUI(showHidden = false) {
     document.getElementById('pot').innerText = game.pot.toFixed(0);
     document.getElementById('b-ai').innerText = game.bets[0].toFixed(0);
     document.getElementById('b-me').innerText = game.bets[1].toFixed(0);
-    document.getElementById('r-num').innerText = round;
-
-    let c0 = game.hands[0], c1 = game.hands[1];
-    let el0 = document.getElementById('c-ai');
-    el0.innerText = c0.r; el0.className = `card ${['h','d'].includes(c0.s)?'red':'black'}`;
     
-    let el1 = document.getElementById('c-me');
-    if(showHidden) {
-        el1.innerText = c1.r; el1.className = `card ${['h','d'].includes(c1.s)?'red':'black'}`;
-    } else {
-        el1.innerText = "?"; el1.className = "card hidden";
-    }
+    let c0=game.hands[0], c1=game.hands[1];
+    let el0=document.getElementById('c-ai'); el0.innerText=c0.r; el0.className=`card ${['h','d'].includes(c0.s)?'red':'black'}`;
+    let el1=document.getElementById('c-me'); 
+    if(showHidden) { el1.innerText=c1.r; el1.className=`card ${['h','d'].includes(c1.s)?'red':'black'}`; }
+    else { el1.innerText="?"; el1.className="card hidden"; }
 
+    // Controls Update
     let btns = document.querySelectorAll('.controls button');
+    let slider = document.getElementById('bet-slider');
     let valid = game.validActs();
-    btns.forEach(b => b.disabled = true);
     
+    btns.forEach(b => b.disabled = true);
+    slider.disabled = true;
+
     if(!game.done && game.turn === 1) {
         let diff = game.bets[0] - game.bets[1];
         document.getElementById('btn-chk').innerText = diff===0 ? "Check" : `Call (${diff})`;
-        if(valid.includes(0)) btns[0].disabled = false;
-        if(valid.includes(1)) btns[1].disabled = false;
-        if(valid.includes(2)) btns[2].disabled = false;
-        if(valid.includes(3)) btns[3].disabled = false;
-        if(valid.includes(5)) btns[4].disabled = false;
+        valid.forEach(v => { 
+            let idx = (v===5) ? 5 : (v===0?0: (v===1?1: (v===2?2: (v===3?3: -1))));
+            if(idx>=0 && btns[idx]) btns[idx].disabled = false;
+        });
+        
+        // Slider Logic
+        let minBet = diff > 0 ? diff : 1;
+        let maxBet = game.stacks[1];
+        if(maxBet >= minBet) {
+            slider.disabled = false;
+            slider.min = minBet;
+            slider.max = maxBet;
+            slider.value = minBet;
+            updateSliderBtn();
+            document.getElementById('btn-custom').disabled = false;
+        }
         document.getElementById('status').innerText = "Your Turn";
     } else {
         document.getElementById('status').innerText = game.done ? "Round Over" : "AI Thinking...";
     }
 }
 
+function updateSliderBtn() {
+    let val = document.getElementById('bet-slider').value;
+    let diff = game.bets[0] - game.bets[1];
+    let txt = (parseInt(val) === diff && diff > 0) ? `Call ${val}` : `Bet ${val}`;
+    document.getElementById('btn-custom').innerText = txt;
+}
+
 function startRound() {
     if(chips[0]<=0 || chips[1]<=0) { alert(chips[0]<=0?"You Win Game!":"You Lose Game!"); return; }
+    userStats.totalHands++; round++;
+    let h1 = shoe.draw(), h2 = shoe.draw();
+    game = new State(chips[0], chips[1], h1, h2);
     
-    userStats.totalHands++; // 통계용 판수 증가
-    round++;
-    game = new State(chips[0], chips[1]);
     document.getElementById('ai-thought').style.display = 'none';
-    document.getElementById('exploit-indicator').style.display = 'none';
-    
-    document.querySelectorAll('.card').forEach(c => {
-        c.classList.remove('winner', 'loser');
-        let b = c.querySelector('.penalty-badge'); if(b) b.remove();
-    });
+    document.querySelectorAll('.card').forEach(c => { c.classList.remove('winner','loser'); let b=c.querySelector('.badge'); if(b)b.remove(); });
     
     log(`--- Round ${round} ---`, 'l-sys');
     updateUI();
     if(game.turn === 0) runAI();
 }
 
-function updateBelief() {
-    let userCard = game.hands[1].r; 
-    let probs = new Float32Array(11).fill(1.0); 
-    probs[userCard] = 0; 
-    
-    let dummy = new State(chips[0], chips[1]); 
-    for(let action of game.hist) {
-        if(dummy.turn === 1) { 
-            for(let c=1; c<=10; c++) {
-                if(c === userCard) continue;
-                let key = `Opp:${c}|Seq:${dummy.hist.join('')}`;
-                let strat = solver.getNode(key).getAvgStrat(); 
-                let valid = dummy.validActs();
-                if(valid.includes(action)) probs[c] *= (strat[action] + 0.05); 
-            }
-        }
-        dummy.apply(action);
+function calculateEquity(myRank, shoeCards) {
+    let wins=0, total=0, scenarios=[...shoeCards];
+    for(let c of scenarios) {
+        total++;
+        if(myRank===1 && c.r===10) { wins++; continue; }
+        if(myRank===10 && c.r===1) continue;
+        if(myRank>c.r) wins++; else if(myRank===c.r) wins+=0.5;
     }
-    
-    let sum = probs.reduce((a,b)=>a+b,0);
-    let norm = probs.map(v => sum>0 ? v/sum : 0);
-    
-    let low=0, mid=0, high=0;
-    for(let i=1; i<=5; i++) low+=norm[i];
-    for(let i=6; i<=8; i++) mid+=norm[i];
-    for(let i=9; i<=10; i++) high+=norm[i];
-    
-    document.getElementById('b-low').style.width = (low*100)+'%';
-    document.getElementById('b-mid').style.width = (mid*100)+'%';
-    document.getElementById('b-high').style.width = (high*100)+'%';
+    return total===0?0.5:wins/total;
 }
 
 async function runAI() {
-    updateUI();
-    document.getElementById('ai-thought').style.display = 'block';
+    updateUI(); document.getElementById('ai-thought').style.display='block';
     
-    updateBelief(); // 리얼 베이지안 업데이트
-    
-    let txt = document.getElementById('ai-text');
-    txt.innerText = "Analyzing your habits...";
-    await new Promise(r => setTimeout(r, 800 + Math.random()*1200));
-    
+    let aiCard = game.hands[0].r;
+    let equity = calculateEquity(aiCard, shoe.cards);
+    document.getElementById('ai-text').innerText = `Win Rate: ${(equity*100).toFixed(0)}% (Pot: ${game.pot})`;
+    let bar = document.getElementById('win-rate-bar');
+    bar.style.width=(equity*100)+'%';
+    bar.style.background = equity>0.6?'#43a047':(equity<0.4?'#e53935':'#fdd835');
+
+    await new Promise(r=>setTimeout(r, 600+Math.random()*800));
+
     let key = `Opp:${game.hands[1].r}|Seq:${game.hist.join('')}`;
     let strat = solver.getNode(key).getAvgStrat();
     let valid = game.validActs();
-    
-    // ★ [CORE] Smooth Exploitative Logic (부드러운 착취)
-    if (userStats.totalHands >= 10) {
-        const NASH_FOLD = 0.4; // 기준 폴드율
-        const SENSITIVITY = 1.2; // 변화 민감도
-        
-        let userRate = userStats.getFoldRate();
-        let diff = userRate - NASH_FOLD; 
-        
-        // Multiplier 계산: 쫄보(양수) -> 배팅증가, 콜만함(음수) -> 배팅감소
-        let multiplier = 1.0 + (diff * SENSITIVITY);
-        
-        // 배팅 계열 액션 확률 조작
-        let adjusted = false;
-        [ACT.BET_S, ACT.BET_L, ACT.BET_O].forEach(action => {
-            if (valid.includes(action) && strat[action] > 0.01) {
-                strat[action] = Math.max(0, strat[action] * multiplier);
-                adjusted = true;
-            }
-        });
-        
-        // 확률 재정규화
-        if(adjusted) {
-            let sum = 0; valid.forEach(a => sum += strat[a]);
-            if(sum > 0) valid.forEach(a => strat[a] /= sum);
-            
-            // 시각적 피드백 (디버깅 겸용)
-            if(Math.abs(diff) > 0.15) document.getElementById('exploit-indicator').style.display = 'inline';
-        }
+
+    // Adjust Strategy
+    let bias = (equity - 0.5) * 2.0;
+    if(bias > 0) {
+        [ACT.BET_H, ACT.BET_P, ACT.ALLIN].forEach(a => { if(valid.includes(a)) strat[a]*=(1+bias*1.5); });
+        if(valid.includes(ACT.FOLD)) strat[ACT.FOLD]*=(1-bias*0.8);
+    } else {
+        let def = Math.abs(bias);
+        if(valid.includes(ACT.FOLD)) strat[ACT.FOLD]*=(1+def*2.0);
+        [ACT.BET_H, ACT.BET_P, ACT.ALLIN].forEach(a => { if(valid.includes(a)) strat[a]*=(1-def*0.8); });
     }
-    
-    // Action Selection
-    let r = Math.random(), cum = 0, action = valid[0];
-    let vSum = 0; valid.forEach(a => vSum += strat[a]);
-    
-    for(let a of valid) {
-        let p = (vSum>0) ? strat[a]/vSum : 1/valid.length;
-        cum += p;
-        if(r <= cum) { action = a; break; }
+
+    // Exploit
+    if (userStats.totalHands >= 5) {
+        let diff = userStats.getFoldRate() - 0.4;
+        let mult = Math.min(Math.max(1.0 + (diff*0.5), 0.6), 1.5);
+        [ACT.BET_H, ACT.BET_P, ACT.ALLIN].forEach(a => { if(valid.includes(a)) strat[a] *= mult; });
     }
-    
+
+    // Normalize
+    let vSum=0; valid.forEach(a=>vSum+=strat[a]);
+    let action = valid.includes(ACT.CHECK)?ACT.CHECK:ACT.FOLD;
+    if(vSum>0) {
+        let r=Math.random(), cum=0;
+        for(let a of valid) { cum+=strat[a]/vSum; if(r<=cum){action=a; break;} }
+    }
+
     log(`🤖 AI: ${ACT_TXT[action]}`, 'l-ai');
-    if(action >= ACT.BET_S) playSound('bet'); else if(action===ACT.CHECK) playSound('bet');
-    
     game.apply(action);
-    if(game.done) endRound();
-    else updateUI();
+    if(game.done) endRound(); else updateUI();
 }
 
+// User Action Handler
 function act(a) {
     if(game.turn!==1) return;
-    if(a===ACT.FOLD) { userStats.foldCount++; playSound('fold'); }
-    else playSound('bet');
-    
+    if(a===ACT.FOLD) userStats.foldCount++;
     log(`👤 You: ${ACT_TXT[a]}`, 'l-user');
     game.apply(a);
-    if(game.done) endRound();
-    else runAI();
+    if(game.done) endRound(); else runAI();
+}
+
+// User Slider Action
+function actCustom() {
+    if(game.turn!==1) return;
+    let val = parseInt(document.getElementById('bet-slider').value);
+    let diff = game.bets[0] - game.bets[1];
+    
+    // Map custom amount to closest AI bucket for game history consistency
+    let pot = game.pot + diff;
+    let ratio = val / pot;
+    let aiAct = ACT.BET_P; // Default default
+    if (val === game.stacks[1]) aiAct = ACT.ALLIN;
+    else if (val <= diff) aiAct = ACT.CHECK;
+    else if (ratio < 0.4) aiAct = ACT.BET_H; // Treat as small/half
+    else if (ratio < 1.2) aiAct = ACT.BET_P; // Treat as pot
+    else aiAct = ACT.BET_O; // Overbet
+
+    let txt = (val === diff && diff > 0) ? "Call" : "Bet";
+    log(`👤 You: ${txt} ${val} (Custom)`, 'l-user');
+    
+    // Pass custom amount to apply logic
+    game.apply(aiAct, val);
+    if(game.done) endRound(); else runAI();
 }
 
 function endRound() {
-    let p = game.payoff(1); 
-    updateUI(true); // 카드 오픈
-    
+    let p = game.payoff(1); updateUI(true);
+    let last = game.hist[game.hist.length-1];
     let aiCard = document.getElementById('c-ai');
     let myCard = document.getElementById('c-me');
-    
-    // 10 Penalty Badge Check
-    let last = game.hist[game.hist.length-1];
+
     if(last === ACT.FOLD) {
-        let folder = game.turn; 
+        let folder = game.turn;
         if(game.hands[folder].r === 10) {
-            let badge = document.createElement('div');
-            badge.className = 'penalty-badge'; badge.innerText = "-10 PENALTY";
-            if(folder===0) aiCard.appendChild(badge); else myCard.appendChild(badge);
+            addBadge(folder===0?aiCard:myCard, "-10 PENALTY", 'bg-pen');
             log("🚨 10-Holding Penalty!", "l-warn");
+        }
+    } else {
+        let r0 = game.hands[0].r, r1 = game.hands[1].r;
+        if( (r0===1 && r1===10) || (r0===10 && r1===1) ) {
+            log("⚡ REVOLUTION! (1 > 10)", "l-warn");
+            addBadge(r0===1?aiCard:myCard, "1 > 10 WIN", 'bg-rev');
         }
     }
 
-    if(p > 0) {
-        log(`🎉 WIN (+${p})`, 'l-user'); playSound('win');
-        myCard.classList.add('winner'); aiCard.classList.add('loser');
-    } else if(p < 0) {
-        log(`💀 LOSE (${p})`, 'l-ai'); playSound('lose');
-        aiCard.classList.add('winner'); myCard.classList.add('loser');
-    } else {
-        log(`🤝 DRAW`, 'l-sys');
-    }
+    if(p>0) { log(`🎉 WIN (+${p})`, 'l-user'); myCard.classList.add('winner'); aiCard.classList.add('loser'); }
+    else if(p<0) { log(`💀 LOSE (${p})`, 'l-ai'); aiCard.classList.add('winner'); myCard.classList.add('loser'); }
+    else log(`🤝 DRAW`, 'l-sys');
 
-    chips[1] += p; chips[0] -= p;
+    chips[1]+=p; chips[0]-=p;
     setTimeout(startRound, 2500);
+}
+
+function addBadge(el, txt, cls) {
+    let b = document.createElement('div'); b.className = 'badge '+cls; b.innerText = txt; el.appendChild(b);
 }
 </script>
 </body>
 </html>
-
-
 
