@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Indian Hold'em AI (MCCFR)</title>
+    <title>Smart Indian Hold'em (Async Training)</title>
     <style>
         :root {
             --bg-color: #2c3e50;
@@ -11,29 +11,29 @@
             --card-bg: #ecf0f1;
             --text-color: #ffffff;
             --accent-color: #f1c40f;
-            --danger-color: #e74c3c;
             --btn-color: #3498db;
         }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0;
-            padding: 0;
+            padding: 20px;
             display: flex;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
             min-height: 100vh;
         }
         .container {
             width: 100%;
-            max-width: 600px;
+            max-width: 500px;
             background-color: #34495e;
             border-radius: 15px;
             overflow: hidden;
             box-shadow: 0 10px 20px rgba(0,0,0,0.5);
             position: relative;
         }
+        
         /* Loading Overlay */
         #loading-overlay {
             position: absolute;
@@ -56,177 +56,76 @@
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        #progress-bar-container {
+        #progress-container {
             width: 80%;
-            height: 10px;
+            height: 20px;
             background: #555;
-            border-radius: 5px;
-            margin-top: 10px;
+            border-radius: 10px;
+            margin-top: 15px;
             overflow: hidden;
+            position: relative;
         }
         #progress-bar {
             width: 0%;
             height: 100%;
-            background: var(--accent-color);
-            transition: width 0.1s;
+            background: linear-gradient(90deg, #f1c40f, #e67e22);
+            transition: width 0.2s;
         }
+        #loading-text { font-weight: bold; margin-top: 10px; text-align: center; }
 
         /* Game Header */
-        .header {
-            background-color: #2c3e50;
-            padding: 15px;
-            text-align: center;
-            border-bottom: 2px solid #1abc9c;
-        }
-        .stats-row {
-            display: flex;
-            justify-content: space-around;
-            font-size: 1.1em;
-            font-weight: bold;
-        }
+        .header { background: #2c3e50; padding: 15px; text-align: center; border-bottom: 2px solid #1abc9c; }
+        .stats-row { display: flex; justify-content: space-around; font-weight: bold; font-size: 1.1em; }
         
-        /* Poker Table */
-        .table {
-            background-color: var(--table-color);
-            padding: 20px;
-            min-height: 300px;
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            border-top: 5px solid #1e8449;
-            border-bottom: 5px solid #1e8449;
-        }
+        /* Table */
+        .table { background: var(--table-color); padding: 20px; min-height: 380px; text-align: center; position: relative; }
         
-        /* Cards */
-        .card-area {
-            display: flex;
-            justify-content: space-between;
-            width: 100%;
-            margin: 10px 0;
-        }
-        .player-box {
-            background: rgba(0,0,0,0.3);
-            border-radius: 10px;
-            padding: 10px;
-            text-align: center;
-            width: 45%;
-        }
+        .card-area { display: flex; justify-content: space-between; margin: 15px 0; }
+        .player-box { background: rgba(0,0,0,0.3); border-radius: 10px; padding: 10px; width: 45%; }
+        
         .card {
-            background: var(--card-bg);
-            color: #333;
-            width: 60px;
-            height: 90px;
-            border-radius: 5px;
-            display: inline-flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 1.5em;
-            font-weight: bold;
-            margin-top: 5px;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+            background: var(--card-bg); color: #333; width: 60px; height: 90px;
+            border-radius: 6px; display: inline-flex; justify-content: center; align-items: center;
+            font-size: 1.8em; font-weight: bold; margin-top: 5px; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
         }
         .card.red { color: #c0392b; }
         .card.black { color: #2c3e50; }
-        .card.hidden { background: #95a5a6; color: #7f8c8d; font-size: 2em; }
+        .card.hidden { background: #7f8c8d; color: #bdc3c7; }
 
-        /* Pot & Info */
-        .pot-display {
-            background: rgba(0,0,0,0.5);
-            padding: 5px 20px;
-            border-radius: 20px;
-            margin: 10px 0;
-            font-size: 1.2em;
-            color: var(--accent-color);
-        }
+        .pot-display { background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 15px; display: inline-block; font-weight: bold; color: var(--accent-color); margin-bottom: 10px;}
 
-        /* AI Thought Bubble */
+        /* AI Visualization */
         .ai-thought {
-            background: #fff;
-            color: #333;
-            border-radius: 10px;
-            padding: 10px;
-            width: 90%;
-            margin-bottom: 10px;
-            font-size: 0.9em;
-            box-shadow: 0 5px 10px rgba(0,0,0,0.2);
-            position: relative;
-            display: none; /* Hidden by default */
+            background: #fff; color: #333; border-radius: 8px; padding: 10px;
+            width: 90%; margin: 0 auto 10px auto; font-size: 0.85em; display: none;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            position: relative; text-align: left;
         }
         .ai-thought::after {
-            content: '';
-            position: absolute;
-            top: -10px; left: 20%;
-            border-width: 0 10px 10px 10px;
-            border-style: solid;
-            border-color: transparent transparent #fff transparent;
+             content: ''; position: absolute; top: -8px; left: 20%;
+             border-width: 0 8px 8px 8px; border-style: solid; border-color: transparent transparent #fff transparent;
         }
-        .bar-container {
-            display: flex;
-            height: 10px;
-            border-radius: 5px;
-            overflow: hidden;
-            margin-top: 5px;
-            background: #ddd;
-        }
-        .bar-segment { height: 100%; }
-        .bg-red { background-color: #e74c3c; }
-        .bg-yellow { background-color: #f1c40f; }
-        .bg-green { background-color: #2ecc71; }
+        .bar-container { display: flex; height: 10px; margin-top: 4px; border-radius: 5px; overflow: hidden; background: #ddd; }
+        .bg-red { background: #e74c3c; } .bg-yellow { background: #f1c40f; } .bg-green { background: #2ecc71; }
+        
+        /* Typing Animation */
+        .typing span { display: inline-block; width: 4px; height: 4px; background: #333; border-radius: 50%; animation: type 1s infinite; margin: 0 2px; }
+        .typing span:nth-child(2) { animation-delay: 0.2s; } .typing span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes type { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-4px);} }
 
         /* Controls */
-        .controls {
-            padding: 15px;
-            background: #34495e;
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-        }
-        button {
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            font-size: 1em;
-            font-weight: bold;
-            cursor: pointer;
-            transition: transform 0.1s, opacity 0.2s;
-            color: white;
-        }
-        button:active { transform: scale(0.95); }
+        .controls { padding: 15px; background: #34495e; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        button { padding: 12px; border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: bold; font-size: 1em; transition: 0.1s; }
+        button:active { transform: scale(0.96); }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
-        
-        .btn-fold { background-color: #e74c3c; grid-column: span 2; }
-        .btn-check { background-color: #27ae60; grid-column: span 2; }
-        .btn-bet { background-color: #3498db; }
-        .btn-allin { background-color: #9b59b6; background-image: linear-gradient(45deg, #8e44ad, #9b59b6); }
+        .btn-fold { background: #e74c3c; grid-column: span 2; }
+        .btn-check { background: #27ae60; grid-column: span 2; }
+        .btn-bet { background: #3498db; }
+        .btn-allin { background: #8e44ad; }
 
-        /* Logs */
-        .logs {
-            max-height: 150px;
-            overflow-y: auto;
-            padding: 10px;
-            font-size: 0.9em;
-            background: #2c3e50;
-            border-top: 1px solid #444;
-        }
-        .log-entry { margin-bottom: 4px; border-bottom: 1px solid #3e5871; padding-bottom: 2px; }
-        .log-ai { color: #f39c12; }
-        .log-user { color: #3498db; }
-        .log-sys { color: #95a5a6; font-style: italic; }
-
-        /* AI Thinking Animation */
-        .typing-indicator span {
-            display: inline-block;
-            width: 5px; height: 5px;
-            background-color: #333;
-            border-radius: 50%;
-            animation: typing 1s infinite;
-            margin: 0 2px;
-        }
-        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes typing { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
-
+        .logs { height: 130px; overflow-y: auto; background: #222; color: #ccc; font-size: 0.85em; padding: 10px; border-top: 1px solid #444; text-align: left; }
+        .log-entry { border-bottom: 1px solid #333; padding-bottom: 2px; margin-bottom: 2px; }
+        .log-ai { color: #f39c12; } .log-user { color: #3498db; } .log-sys { color: #95a5a6; font-style: italic; }
     </style>
 </head>
 <body>
@@ -234,16 +133,14 @@
 <div class="container">
     <div id="loading-overlay">
         <div class="spinner"></div>
-        <div id="loading-text">Starting Training...</div>
-        <div id="progress-bar-container">
-            <div id="progress-bar"></div>
-        </div>
+        <div id="loading-text">Starting AI Training...<br>0%</div>
+        <div id="progress-container"><div id="progress-bar"></div></div>
     </div>
 
     <div class="header">
         <div class="stats-row">
             <span>🤖 AI: <span id="ai-stack">100.0</span></span>
-            <span>🏆 Round <span id="round-num">1</span></span>
+            <span>R<span id="round-num">1</span></span>
             <span>👤 You: <span id="my-stack">100.0</span></span>
         </div>
     </div>
@@ -251,13 +148,13 @@
     <div class="table">
         <div class="ai-thought" id="ai-thought-box">
             <div id="ai-msg">Thinking...</div>
-            <div style="font-size:0.8em; margin-top:5px; color:#555;">AI's Guess on ITS OWN card:</div>
+            <div style="margin-top:5px; color:#666; font-size:0.9em;">AI's Guess on ITS OWN card:</div>
             <div class="bar-container" id="belief-bar">
-                <div class="bar-segment bg-red" style="width: 33%"></div>
-                <div class="bar-segment bg-yellow" style="width: 33%"></div>
-                <div class="bar-segment bg-green" style="width: 33%"></div>
+                <div class="bg-red" style="width:33%"></div>
+                <div class="bg-yellow" style="width:33%"></div>
+                <div class="bg-green" style="width:33%"></div>
             </div>
-            <div style="font-size:0.8em; margin-top:2px; display:flex; justify-content:space-between;">
+            <div style="display:flex; justify-content:space-between; font-size:0.75em; color:#888;">
                 <span>Low</span><span>Mid</span><span>High</span>
             </div>
         </div>
@@ -274,10 +171,10 @@
         </div>
 
         <div class="pot-display">Pot: <span id="pot-size">2.0</span></div>
-        <div id="game-status" style="color:#ecf0f1; font-style:italic;">Game Start</div>
+        <div id="game-status" style="color:#bdc3c7; font-size:0.9em; margin-top:5px;">Game Start</div>
     </div>
 
-    <div class="controls" id="controls">
+    <div class="controls">
         <button class="btn-fold" onclick="humanAction(0)">Fold</button>
         <button class="btn-check" id="btn-check" onclick="humanAction(1)">Check</button>
         <button class="btn-bet" id="btn-bet1" onclick="humanAction(2)">Bet Small (33%)</button>
@@ -290,450 +187,341 @@
 </div>
 
 <script>
-/** * Indian Hold'em AI Logic (MCCFR) - Optimized for JS */
+/** * Indian Hold'em AI (Async Training Version)
+ * Doesn't freeze the browser!
+ */
 
-// --- Constants & Config ---
-const RANKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-const SUITS = ['s', 'h', 'd', 'c']; // spades, hearts, diamonds, clubs
-const SUIT_SYMBOLS = {'s': '♠', 'h': '♥', 'd': '♦', 'c': '♣'};
-const ACTION = { FOLD: 0, CHECK_CALL: 1, BET_SMALL: 2, BET_LARGE: 3, BET_OVER: 4, ALL_IN: 5 };
-const ACTION_NAMES = ["Fold", "Check/Call", "Bet Small", "Bet Large", "Overbet", "All-In"];
-const BET_SIZES = { 2: 0.33, 3: 0.75, 4: 1.5, 5: 999.0 };
+// --- CONFIG ---
+const RANKS = [1,2,3,4,5,6,7,8,9,10];
+const SUITS = ['s','h','d','c'];
+const SYMBOLS = {'s':'♠','h':'♥','d':'♦','c':'♣'};
+const ACT = { FOLD:0, CHECK:1, BET_S:2, BET_L:3, BET_O:4, ALLIN:5 };
+const ACT_NAMES = ["Fold", "Check/Call", "Bet Small", "Bet Large", "Overbet", "All-In"];
+const BET_MULTS = { 2:0.33, 3:0.75, 4:1.5, 5:999.0 };
 
-// --- Helpers ---
-function weightedChoice(indices, probs) {
-    let sum = 0;
-    let r = Math.random();
-    for (let i = 0; i < indices.length; i++) {
+// --- HELPERS ---
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+// This function yields control back to the UI thread
+function nextFrame() { return new Promise(r => setTimeout(r, 0)); }
+
+function weightedChoice(probs) {
+    let r = Math.random(), sum = 0;
+    for(let i=0; i<probs.length; i++) {
         sum += probs[i];
-        if (r <= sum) return indices[i];
+        if(r <= sum) return i;
     }
-    return indices[indices.length - 1];
+    return probs.length-1;
 }
 
-function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-// UI Unblocking delay
-function nextTick() { return new Promise(resolve => setTimeout(resolve, 0)); }
-
-// --- AI Classes ---
-class CFRNode {
-    constructor(numActions) {
-        this.regretSum = new Array(numActions).fill(0);
-        this.strategySum = new Array(numActions).fill(0);
-        this.numActions = numActions;
+// --- AI ENGINE (MCCFR) ---
+class Node {
+    constructor(n) { 
+        this.regret = new Float32Array(n); 
+        this.strategy = new Float32Array(n); 
     }
     getStrategy() {
-        let regrets = this.regretSum.map(r => Math.max(r, 0));
-        let normSum = regrets.reduce((a, b) => a + b, 0);
-        if (normSum > 0) return regrets.map(r => r / normSum);
-        return new Array(this.numActions).fill(1 / this.numActions);
+        let r = this.regret.map(v => Math.max(v, 0));
+        let sum = r.reduce((a,b)=>a+b, 0);
+        return sum > 0 ? r.map(v => v/sum) : r.map(()=>1/this.regret.length);
     }
-    getAverageStrategy() {
-        let normSum = this.strategySum.reduce((a, b) => a + b, 0);
-        if (normSum > 0) return this.strategySum.map(s => s / normSum);
-        return new Array(this.numActions).fill(1 / this.numActions);
+    getAvgStrategy() {
+        let sum = this.strategy.reduce((a,b)=>a+b, 0);
+        return sum > 0 ? this.strategy.map(v => v/sum) : this.strategy.map(()=>1/this.strategy.length);
     }
 }
 
-class MCCFR_Solver {
+class Solver {
     constructor() { this.nodes = {}; }
+    getNode(key) { if(!this.nodes[key]) this.nodes[key] = new Node(6); return this.nodes[key]; }
     
-    getInfoSet(state) {
-        let opp = 1 - state.playerTurn;
-        let oppCard = state.hands[opp];
-        let histStr = state.history.join("");
-        return `Opp:${oppCard.rank}|${histStr}`;
-    }
-
-    getNode(infoSet) {
-        if (!this.nodes[infoSet]) this.nodes[infoSet] = new CFRNode(6); 
-        return this.nodes[infoSet];
-    }
-
-    // Async Training to prevent UI freeze
-    async trainAsync(iterations, onProgress) {
-        const CHUNK_SIZE = 500; // Calculate 500 hands then update UI
-        for (let i = 0; i < iterations; i += CHUNK_SIZE) {
+    // 비동기 학습 함수 (멈춤 방지)
+    async train(iters, onProgress) {
+        const BATCH_SIZE = 200; // 200판 계산하고 화면 갱신
+        
+        for(let i=0; i<iters; i+=BATCH_SIZE) {
             
-            for (let j = 0; j < CHUNK_SIZE && (i+j) < iterations; j++) {
-                let traverser = (i+j) % 2;
-                let s0 = Math.floor(Math.random() * 180) + 20;
-                let s1 = Math.floor(Math.random() * 180) + 20;
-                let state = new GameState(s0, s1);
-                state.playerTurn = Math.random() < 0.5 ? 0 : 1;
-                this.cfr(state, traverser, 1.0);
+            // BATCH_SIZE만큼 빡세게 계산
+            for(let j=0; j<BATCH_SIZE && (i+j)<iters; j++) {
+                let s0 = Math.floor(Math.random()*180)+20;
+                let s1 = Math.floor(Math.random()*180)+20;
+                let state = new State(s0, s1);
+                state.turn = Math.random()<0.5 ? 0 : 1;
+                this.cfr(state, (i+j)%2, 1.0);
             }
             
-            // Update UI Progress
-            if (onProgress) onProgress((i + CHUNK_SIZE) / iterations);
-            await nextTick(); // Yield control to browser
+            // 화면 갱신을 위해 잠깐 쉼 (Yield)
+            if(onProgress) onProgress((i+BATCH_SIZE)/iters);
+            await nextFrame(); 
         }
-        console.log("Training Complete");
     }
 
-    cfr(state, traverser, prTraverser) {
-        if (state.isTerminal()) return state.getPayoff(traverser);
+    cfr(state, p, pr) {
+        if(state.done) return state.getPayoff(p);
 
-        let validActions = state.getValidActions();
-        if (validActions.length === 0) return 0; 
+        let valid = state.validActions();
+        if(valid.length===0) return 0;
 
-        let infoSet = this.getInfoSet(state);
-        let node = this.getNode(infoSet);
-        let strategy = node.getStrategy();
-
-        let probs = new Array(6).fill(0);
-        let probSum = 0;
-        validActions.forEach(a => { probs[a] = strategy[a]; probSum += strategy[a]; });
+        let key = `Opp:${state.hands[1-state.turn].r}|Seq:${state.hist.join('')}`;
+        let node = this.getNode(key);
+        let strat = node.getStrategy();
         
-        if (probSum > 0) probs = probs.map(p => p / probSum);
-        else validActions.forEach(a => probs[a] = 1.0 / validActions.length);
+        let probs = new Float32Array(6);
+        let sum = 0;
+        valid.forEach(a => { probs[a] = strat[a]; sum += strat[a]; });
+        if(sum > 0) probs = probs.map(v => v/sum);
+        else valid.forEach(a => probs[a] = 1.0/valid.length);
 
-        if (state.playerTurn !== traverser) {
-            let action = weightedChoice([0,1,2,3,4,5], probs);
-            if (!validActions.includes(action)) action = validActions[Math.floor(Math.random() * validActions.length)];
-            
-            let nextState = state.clone();
-            nextState.applyAction(action);
-            return this.cfr(nextState, traverser, prTraverser);
+        if(state.turn !== p) {
+            let a = weightedChoice(probs);
+            if(!valid.includes(a)) a = valid[Math.floor(Math.random()*valid.length)];
+            let next = state.clone(); next.apply(a);
+            return this.cfr(next, p, pr);
         } else {
-            let util = new Array(6).fill(0);
+            let util = new Float32Array(6);
             let nodeUtil = 0;
-            
-            validActions.forEach(act => {
-                let nextState = state.clone();
-                nextState.applyAction(act);
-                let newPr = prTraverser * probs[act];
-                util[act] = this.cfr(nextState, traverser, newPr);
-                nodeUtil += probs[act] * util[act];
+            valid.forEach(a => {
+                let next = state.clone(); next.apply(a);
+                util[a] = this.cfr(next, p, pr * probs[a]);
+                nodeUtil += probs[a] * util[a];
             });
-
-            validActions.forEach(act => {
-                let regret = util[act] - nodeUtil;
-                node.regretSum[act] += regret;
-                node.strategySum[act] += (prTraverser * probs[act]);
+            valid.forEach(a => {
+                node.regret[a] += util[a] - nodeUtil;
+                node.strategy[a] += pr * probs[a];
             });
             return nodeUtil;
         }
     }
 }
 
-class GameState {
-    constructor(p0Stack, p1Stack) {
+class State {
+    constructor(s0, s1) {
         this.deck = [];
-        for(let r of RANKS) for(let s of SUITS) this.deck.push({rank:r, suit:s});
-        for (let i = this.deck.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [this.deck[i], this.deck[j]] = [this.deck[j], this.deck[i]];
-        }
-
-        this.stacks = [p0Stack, p1Stack];
-        let ante = 1.0;
-        let p0Ante = Math.min(ante, this.stacks[0]);
-        let p1Ante = Math.min(ante, this.stacks[1]);
-        this.stacks[0] -= p0Ante;
-        this.stacks[1] -= p1Ante;
-
-        this.pot = p0Ante + p1Ante;
-        this.contribution = [p0Ante, p1Ante];
-        this.bets = [p0Ante, p1Ante];
+        for(let r of RANKS) for(let s of SUITS) this.deck.push({r,s});
+        for(let i=39; i>0; i--) { let j=Math.floor(Math.random()*(i+1)); [this.deck[i],this.deck[j]]=[this.deck[j],this.deck[i]]; }
         
+        this.stacks = [s0-1, s1-1];
+        this.bets = [1, 1];
+        this.pot = 2;
+        this.contrib = [1, 1];
         this.hands = [this.deck.pop(), this.deck.pop()];
-        this.history = [];
-        this.playerTurn = 1; 
-        this.gameOver = false;
+        this.hist = [];
+        this.turn = 1; // Human first
+        this.done = false;
     }
-
-    isTerminal() { return this.gameOver; }
-
-    getValidActions() {
-        let actions = [ACTION.FOLD, ACTION.CHECK_CALL];
-        let me = this.playerTurn;
-        let opp = 1 - me;
-
-        if (this.stacks[me] <= 0) return actions; 
-        if (this.stacks[opp] <= 0 && this.bets[opp] > this.bets[me]) return actions;
-
+    
+    validActions() {
+        let me = this.turn, opp = 1-me;
+        if(this.stacks[me]<=0) return [ACT.FOLD, ACT.CHECK];
+        if(this.stacks[opp]<=0 && this.bets[opp]>this.bets[me]) return [ACT.FOLD, ACT.CHECK];
+        
+        let acts = [ACT.FOLD, ACT.CHECK];
         let diff = this.bets[opp] - this.bets[me];
-        if (!this.gameOver) {
-            let potAfterCall = this.pot + diff;
-            for (let [act, mult] of Object.entries(BET_SIZES)) {
-                act = parseInt(act);
-                if (act === ACTION.ALL_IN) { actions.push(act); continue; }
-                
-                let raiseAmt = potAfterCall * mult;
-                let totalCost = diff + raiseAmt;
-                if (totalCost < this.stacks[me] && raiseAmt >= 1.0) {
-                    actions.push(act);
-                }
+        let target = this.pot + diff;
+        
+        if(!this.done) {
+            for(let a of [2,3,4,5]) {
+                if(a===ACT.ALLIN) { acts.push(a); continue; }
+                let raise = target * BET_MULTS[a];
+                if((diff + raise) < this.stacks[me] && raise >= 1) acts.push(a);
             }
         }
-        return actions;
+        return acts;
     }
 
-    applyAction(action) {
-        let me = this.playerTurn;
-        let opp = 1 - me;
-        this.history.push(action);
-
-        if (action === ACTION.FOLD) {
-            this.gameOver = true;
-            return;
-        } else if (action === ACTION.CHECK_CALL) {
-            let diff = this.bets[opp] - this.bets[me];
-            let amount = Math.min(diff, this.stacks[me]);
-            this.stacks[me] -= amount;
-            this.bets[me] += amount;
-            this.contribution[me] += amount;
-            this.pot += amount;
-
-            if (this.history.length >= 1 && Math.abs(this.bets[0] - this.bets[1]) < 0.01) this.gameOver = true;
-            if (this.history.length >= 2 && this.bets[0] === this.bets[1]) this.gameOver = true;
-        } else {
-            let diff = this.bets[opp] - this.bets[me];
-            let potAfterCall = this.pot + diff;
-            let amount = 0;
-            
-            if (action === ACTION.ALL_IN) {
-                amount = this.stacks[me];
-            } else {
-                let raiseAmt = potAfterCall * BET_SIZES[action];
-                amount = diff + raiseAmt;
-                if (amount >= this.stacks[me]) amount = this.stacks[me];
-            }
-            this.stacks[me] -= amount;
-            this.bets[me] += amount;
-            this.contribution[me] += amount;
-            this.pot += amount;
-        }
-
-        if (!this.gameOver) this.playerTurn = opp;
-    }
-
-    getPayoff(playerIdx) {
-        let opp = 1 - playerIdx;
-        // Check who folded. The last action was FOLD.
-        // applyAction switches turn unless gameover. 
-        // But for FOLD, gameOver=true immediately. 
-        // So this.playerTurn is the one who folded.
-        if (this.history[this.history.length-1] === ACTION.FOLD) {
-             if (this.playerTurn === playerIdx) return -this.contribution[playerIdx]; 
-             else return this.pot - this.contribution[playerIdx]; 
+    apply(a) {
+        this.hist.push(a);
+        let me = this.turn, opp = 1-me;
+        if(a===ACT.FOLD) { this.done = true; return; }
+        
+        let diff = this.bets[opp] - this.bets[me];
+        let amt = 0;
+        
+        if(a===ACT.CHECK) amt = Math.min(diff, this.stacks[me]);
+        else if(a===ACT.ALLIN) amt = this.stacks[me];
+        else {
+            let raise = (this.pot + diff) * BET_MULTS[a];
+            amt = diff + raise;
+            if(amt > this.stacks[me]) amt = this.stacks[me];
         }
         
-        let myRank = this.hands[playerIdx].rank;
-        let oppRank = this.hands[opp].rank;
-        if (myRank > oppRank) return this.pot - this.contribution[playerIdx];
-        else if (myRank < oppRank) return -this.contribution[playerIdx];
-        else return (this.pot / 2) - this.contribution[playerIdx];
+        this.stacks[me] -= amt;
+        this.bets[me] += amt;
+        this.contrib[me] += amt;
+        this.pot += amt;
+        
+        if(a===ACT.CHECK && this.bets[0]===this.bets[1] && this.hist.length>=1) {
+             if(this.hist.length>=2 || diff>0) this.done = true;
+        }
+        if(!this.done) this.turn = opp;
     }
-
+    
+    getPayoff(p) {
+        let opp = 1-p;
+        if(this.hist[this.hist.length-1] === ACT.FOLD) {
+            if(this.turn === p) return -this.contrib[p];
+            else return this.pot - this.contrib[p];
+        }
+        let r1 = this.hands[p].r, r2 = this.hands[opp].r;
+        if(r1 > r2) return this.pot - this.contrib[p];
+        if(r1 < r2) return -this.contrib[p];
+        return this.pot/2 - this.contrib[p];
+    }
+    
     clone() {
-        let copy = new GameState(this.stacks[0], this.stacks[1]); 
-        copy.deck = [...this.deck]; 
-        copy.stacks = [...this.stacks];
-        copy.pot = this.pot;
-        copy.contribution = [...this.contribution];
-        copy.bets = [...this.bets];
-        copy.hands = [...this.hands];
-        copy.history = [...this.history];
-        copy.playerTurn = this.playerTurn;
-        copy.gameOver = this.gameOver;
-        return copy;
+        let s = new State(0,0);
+        s.deck = [...this.deck]; s.stacks=[...this.stacks]; s.bets=[...this.bets];
+        s.pot=this.pot; s.contrib=[...this.contrib]; s.hands=[...this.hands];
+        s.hist=[...this.hist]; s.turn=this.turn; s.done=this.done;
+        return s;
     }
 }
 
-// --- Game Logic & UI ---
-let solver = new MCCFR_Solver();
-let aiStack = 100.0;
-let myStack = 100.0;
-let gameState = null;
-let roundCount = 0;
+// --- UI & MAIN ---
+let solver = new Solver();
+let aiChips = 100, myChips = 100;
+let game = null, round = 0;
 
-window.onload = async function() {
-    let progressBar = document.getElementById('progress-bar');
-    let loadingText = document.getElementById('loading-text');
-
+window.onload = function() {
+    let bar = document.getElementById('progress-bar');
+    let txt = document.getElementById('loading-text');
+    
     // Start Async Training
-    await solver.trainAsync(10000, (percent) => {
-        let pct = (percent * 100).toFixed(0);
-        progressBar.style.width = `${pct}%`;
-        loadingText.innerHTML = `Training AI Strategy...<br>${pct}%`;
+    // 10,000 Iterations is enough for Indian Hold'em (small state space)
+    solver.train(10000, (pct) => {
+        let p = Math.min(100, Math.floor(pct*100));
+        bar.style.width = p + '%';
+        txt.innerHTML = `Training AI... ${p}%<br><span style="font-size:0.8em; font-weight:normal;">Calculated ${Math.floor(pct*10000)} hands</span>`;
+    }).then(() => {
+        document.getElementById('loading-overlay').style.display = 'none';
+        startRound();
     });
-
-    document.getElementById('loading-overlay').style.display = 'none';
-    startRound();
 };
 
-function log(msg, type='sys') {
+function log(msg, cls) {
     let div = document.createElement('div');
-    div.className = `log-entry log-${type}`;
-    div.innerText = msg;
+    div.innerText = msg; div.className = 'log-entry '+cls;
     let box = document.getElementById('log-box');
-    box.appendChild(div);
-    box.scrollTop = box.scrollHeight;
+    box.appendChild(div); box.scrollTop = box.scrollHeight;
 }
 
 function updateUI() {
-    document.getElementById('ai-stack').innerText = gameState.stacks[0].toFixed(1);
-    document.getElementById('my-stack').innerText = gameState.stacks[1].toFixed(1);
-    document.getElementById('pot-size').innerText = gameState.pot.toFixed(1);
-    document.getElementById('ai-bet').innerText = gameState.bets[0].toFixed(1);
-    document.getElementById('my-bet').innerText = gameState.bets[1].toFixed(1);
-    document.getElementById('round-num').innerText = roundCount;
+    document.getElementById('ai-stack').innerText = game.stacks[0].toFixed(1);
+    document.getElementById('my-stack').innerText = game.stacks[1].toFixed(1);
+    document.getElementById('pot-size').innerText = game.pot.toFixed(1);
+    document.getElementById('ai-bet').innerText = game.bets[0].toFixed(1);
+    document.getElementById('my-bet').innerText = game.bets[1].toFixed(1);
+    document.getElementById('round-num').innerText = round;
 
-    let aiC = gameState.hands[0];
-    let aiEl = document.getElementById('ai-card');
-    aiEl.innerText = `${aiC.rank}${SUIT_SYMBOLS[aiC.suit]}`;
-    aiEl.className = `card ${['h','d'].includes(aiC.suit)?'red':'black'}`;
-
-    let myEl = document.getElementById('my-card');
-    if (gameState.gameOver) {
-        let myC = gameState.hands[1];
-        myEl.innerText = `${myC.rank}${SUIT_SYMBOLS[myC.suit]}`;
-        myEl.className = `card ${['h','d'].includes(myC.suit)?'red':'black'}`;
+    let aiC = game.hands[0];
+    let el0 = document.getElementById('ai-card');
+    el0.innerText = aiC.r + SYMBOLS[aiC.s];
+    el0.className = `card ${['h','d'].includes(aiC.s)?'red':'black'}`;
+    
+    let el1 = document.getElementById('my-card');
+    if(game.done) {
+        let myC = game.hands[1];
+        el1.innerText = myC.r + SYMBOLS[myC.s];
+        el1.className = `card ${['h','d'].includes(myC.s)?'red':'black'}`;
     } else {
-        myEl.innerText = "?";
-        myEl.className = "card hidden";
+        el1.innerText = "?"; el1.className = "card hidden";
     }
 
-    if (gameState.gameOver || gameState.playerTurn === 0) {
-        toggleButtons(false);
-    } else {
-        toggleButtons(true, gameState.getValidActions());
-    }
-}
-
-function toggleButtons(enable, validActions=[]) {
     let btns = document.querySelectorAll('.controls button');
+    let valid = game.validActions();
     btns.forEach(b => b.disabled = true);
-    if (!enable) return;
-
-    let callCost = Math.max(0, gameState.bets[0] - gameState.bets[1]);
-    document.getElementById('btn-check').innerText = callCost === 0 ? "Check" : `Call (${callCost.toFixed(1)})`;
-
-    if (validActions.includes(ACTION.FOLD)) document.querySelector('.btn-fold').disabled = false;
-    if (validActions.includes(ACTION.CHECK_CALL)) document.querySelector('.btn-check').disabled = false;
-    if (validActions.includes(ACTION.BET_SMALL)) document.querySelector('#btn-bet1').disabled = false;
-    if (validActions.includes(ACTION.BET_LARGE)) document.querySelector('#btn-bet2').disabled = false;
-    if (validActions.includes(ACTION.BET_OVER)) document.querySelector('#btn-bet3').disabled = false;
-    if (validActions.includes(ACTION.ALL_IN)) document.querySelector('.btn-allin').disabled = false;
+    
+    if(!game.done && game.turn === 1) {
+        let diff = Math.max(0, game.bets[0] - game.bets[1]);
+        document.getElementById('btn-check').innerText = diff===0 ? "Check" : `Call (${diff.toFixed(1)})`;
+        if(valid.includes(ACT.FOLD)) btns[0].disabled = false;
+        if(valid.includes(ACT.CHECK)) btns[1].disabled = false;
+        if(valid.includes(ACT.BET_S)) btns[2].disabled = false;
+        if(valid.includes(ACT.BET_L)) btns[3].disabled = false;
+        if(valid.includes(ACT.BET_O)) btns[4].disabled = false;
+        if(valid.includes(ACT.ALLIN)) btns[5].disabled = false;
+    }
 }
 
 function startRound() {
-    if (aiStack <= 0 || myStack <= 0) {
-        alert(aiStack <= 0 ? "You Win the Tournament!" : "Game Over. You are Bankrupt.");
-        return;
+    if(aiChips<=0 || myChips<=0) { 
+        alert(aiChips<=0 ? "You Win!" : "You Lose!");
+        return; 
     }
-    roundCount++;
-    gameState = new GameState(aiStack, myStack);
+    round++;
+    game = new State(aiChips, myChips);
+    log(`--- Round ${round} ---`, 'log-sys');
     document.getElementById('ai-thought-box').style.display = 'none';
-    log(`--- Round ${roundCount} Start ---`, 'sys');
     updateUI();
-    
-    if (gameState.playerTurn === 0) runAITurn();
+    if(game.turn === 0) runAI();
 }
 
-async function runAITurn() {
-    toggleButtons(false);
-    updateAIThought();
+async function runAI() {
+    updateUI();
     document.getElementById('ai-thought-box').style.display = 'block';
     
-    let msgEl = document.getElementById('ai-msg');
-    msgEl.innerHTML = `Thinking<div class="typing-indicator"><span></span><span></span><span></span></div>`;
+    // AI Thought Visualization
+    let belief = new Float32Array(11).fill(1);
+    game.hist.forEach(a => {
+        if(a===ACT.CHECK) { for(let i=1;i<=5;i++) belief[i]*=0.7; for(let i=6;i<=10;i++) belief[i]*=1.3; }
+        else if(a>=ACT.BET_S) { for(let i=1;i<=5;i++) belief[i]*=1.5; for(let i=6;i<=10;i++) belief[i]*=0.6; }
+    });
+    let sum=0; for(let i=1;i<=10;i++) sum+=belief[i];
+    let low=0, mid=0, high=0;
+    for(let i=1;i<=5;i++) low+=belief[i];
+    for(let i=6;i<=8;i++) mid+=belief[i];
+    for(let i=9;i<=10;i++) high+=belief[i];
     
-    await delay(1500); 
+    let bars = document.getElementById('belief-bar').children;
+    bars[0].style.width = (low/sum*100)+'%';
+    bars[1].style.width = (mid/sum*100)+'%';
+    bars[2].style.width = (high/sum*100)+'%';
     
-    let infoSet = solver.getInfoSet(gameState);
-    let node = solver.getNode(infoSet);
-    let strategy = node.getAverageStrategy();
-    let validActions = gameState.getValidActions();
+    let msg = document.getElementById('ai-msg');
+    msg.innerHTML = 'Thinking<span class="typing"><span></span><span></span><span></span></span>';
     
-    let probs = new Array(6).fill(0);
-    let probSum = 0;
-    validActions.forEach(a => { probs[a] = strategy[a]; probSum += strategy[a]; });
-    if (probSum > 0) probs = probs.map(p => p/probSum);
-    else validActions.forEach(a => probs[a] = 1.0/validActions.length);
+    await delay(1500);
     
-    let action = weightedChoice([0,1,2,3,4,5], probs);
-    if (!validActions.includes(action)) action = validActions[Math.floor(Math.random()*validActions.length)];
+    let key = `Opp:${game.hands[1].r}|Seq:${game.hist.join('')}`;
+    let node = solver.getNode(key);
+    let strat = node.getAvgStrategy();
+    let valid = game.validActions();
     
-    let actName = ACTION_NAMES[action];
-    msgEl.innerText = `I choose: ${actName}`;
-    log(`🤖 AI: ${actName}`, 'ai');
+    let probs = [], pSum = 0;
+    valid.forEach(a => { probs.push(strat[a]); pSum+=strat[a]; });
+    if(pSum>0) probs = probs.map(p=>p/pSum);
+    else probs = probs.map(()=>1/valid.length);
     
-    gameState.applyAction(action);
-    updateUI();
+    let choiceIdx = weightedChoice(probs);
+    let action = valid[choiceIdx];
     
-    if (gameState.isTerminal()) endRound();
+    log("🤖 AI: " + ACT_NAMES[action], 'log-ai');
+    msg.innerText = "I choose: " + ACT_NAMES[action];
+    game.apply(action);
+    
+    if(game.done) endRound();
+    else updateUI();
 }
 
-function humanAction(action) {
-    if (gameState.playerTurn !== 1) return;
-    
-    log(`👤 You: ${ACTION_NAMES[action]}`, 'user');
-    gameState.applyAction(action);
-    updateUI();
-
-    if (gameState.isTerminal()) endRound();
-    else runAITurn();
+function humanAction(a) {
+    if(game.turn !== 1) return;
+    log("👤 You: " + ACT_NAMES[a], 'log-user');
+    game.apply(a);
+    if(game.done) endRound();
+    else runAI();
 }
 
 function endRound() {
     updateUI();
-    let payoff = gameState.getPayoff(1);
-    
-    let aiC = gameState.hands[0].rank;
-    let myC = gameState.hands[1].rank;
-    
+    let p = game.getPayoff(1);
+    myChips += p; aiChips -= p;
     setTimeout(() => {
-        if (payoff > 0) {
-            log(`🎉 You Won ${payoff.toFixed(1)}! (You:${myC} vs AI:${aiC})`, 'sys');
-        } else if (payoff < 0) {
-            log(`💀 You Lost ${Math.abs(payoff).toFixed(1)}... (You:${myC} vs AI:${aiC})`, 'sys');
-        } else {
-            log(`🤝 Split Pot`, 'sys');
-        }
-        
-        myStack += payoff;
-        aiStack -= payoff;
-        
-        setTimeout(startRound, 2500);
+        if(p>0) log(`🎉 You Won ${p.toFixed(1)}`, 'log-sys');
+        else if(p<0) log(`💀 You Lost ${Math.abs(p).toFixed(1)}`, 'log-sys');
+        else log(`🤝 Tie`, 'log-sys');
+        setTimeout(startRound, 2000);
     }, 500);
-}
-
-function updateAIThought() {
-    let myRank = gameState.hands[1].rank;
-    let wins = 0, total = 0;
-    for(let r=1; r<=10; r++) {
-        if (r === myRank) continue;
-        total++;
-        if (r > myRank) wins++;
-    }
-    let winRate = (wins/total * 100).toFixed(0);
-    
-    let belief = new Array(11).fill(1.0);
-    gameState.history.forEach(act => {
-        if ([ACTION.BET_SMALL, ACTION.BET_LARGE, ACTION.BET_OVER, ACTION.ALL_IN].includes(act)) {
-            for(let r=1; r<=5; r++) belief[r] *= 1.5;
-            for(let r=6; r<=10; r++) belief[r] *= 0.6;
-        } else if (act === ACTION.CHECK_CALL) {
-            for(let r=1; r<=5; r++) belief[r] *= 0.7;
-            for(let r=6; r<=10; r++) belief[r] *= 1.3;
-        }
-    });
-    
-    let sum = belief.slice(1).reduce((a,b)=>a+b,0);
-    let low = belief.slice(1,6).reduce((a,b)=>a+b,0) / sum * 100;
-    let mid = belief.slice(6,9).reduce((a,b)=>a+b,0) / sum * 100;
-    let high = belief.slice(9,11).reduce((a,b)=>a+b,0) / sum * 100; 
-
-    document.getElementById('ai-msg').innerText = `Your card is ${myRank}... Win chance: ${winRate}%`;
-    
-    let bars = document.getElementById('belief-bar').children;
-    bars[0].style.width = `${low}%`;
-    bars[1].style.width = `${mid}%`;
-    bars[2].style.width = `${high}%`;
 }
 </script>
 </body>
 </html>
+
