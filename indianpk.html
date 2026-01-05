@@ -236,21 +236,34 @@ class Solver {
 /* --- 4. GAME STATE --- */
 /* --- 4. GAME STATE (수정됨) --- */
 class State {
-    constructor(s0, s1, h1=null, h2=null) {
+    // [변경] ante 매개변수 추가 (기본값 1)
+    constructor(s0, s1, h1=null, h2=null, ante=1) {
         if(h1 && h2) this.hands = [h1, h2];
         else { let d=[]; for(let r of RANKS)d.push({r,s:'x'}); this.hands=[d[Math.floor(Math.random()*10)],d[Math.floor(Math.random()*10)]]; }
-        this.stacks = [s0-1, s1-1];
-        this.bets = [1, 1];
+
+        // [변경] 보유 칩이 판돈(ante)보다 적을 경우를 대비 (올인 처리)
+        let a0 = Math.min(s0, ante);
+        let a1 = Math.min(s1, ante);
+
+        // [변경] 스택에서 앤티(ante)만큼 차감
+        this.stacks = [s0 - a0, s1 - a1];
+        
+        // [변경] 시작 베팅액을 앤티로 설정
+        this.bets = [a0, a1];
         
         let carried = window.carriedPot || 0;
-        this.pot = 2 + carried;
+        
+        // [변경] 팟 = AI낸돈 + 나낸돈 + 이월된돈
+        this.pot = a0 + a1 + carried;
+        
         this.wasCarried = carried > 0;
         window.carriedPot = 0; 
         
-        this.contrib = [1, 1];
+        this.contrib = [a0, a1]; // 총 투자금도 앤티로 시작
         this.hist = [];
         this.turn = 1; this.done = false;
     }
+
 
     validActs() {
         let me = this.turn, opp = 1-me;
@@ -437,16 +450,35 @@ function updateSliderBtn() {
 
 function startRound() {
     if(chips[0]<=0 || chips[1]<=0) { alert(chips[0]<=0?"You Win Game!":"You Lose Game!"); return; }
-    userStats.totalHands++; round++;
+    
+    userStats.totalHands++; 
+    round++;
+
+    // --- [로직 수정] 라운드 구간별 팟 크기 설정 ---
+    // 1. 기본: 1~5라운드 -> Ante 2 (Pot 4)
+    let currentAnte = 2; 
+
+    // 2. 6~20라운드 -> Ante 3 (Pot 6)
+    if (round > 5 && round <= 20) {
+        currentAnte = 3;
+    } 
+    // 3. 21라운드 이후 -> Ante 4 (Pot 8)
+    else if (round > 20) {
+        currentAnte = 4;
+    }
+
+    log(`--- Round ${round} (Ante: ${currentAnte} / Pot: ${currentAnte*2}) ---`, 'l-sys');
+
     let h1 = shoe.draw(), h2 = shoe.draw();
-    game = new State(chips[0], chips[1], h1, h2);
+    
+    // 수정된 State 클래스에 계산된 currentAnte를 전달
+    game = new State(chips[0], chips[1], h1, h2, currentAnte);
     
     document.getElementById('ai-thought').style.display = 'none';
     document.getElementById('ai-risk').style.display = 'none';
     document.getElementById('ai-hero').style.display = 'none';
     document.querySelectorAll('.card').forEach(c => { c.classList.remove('winner','loser'); let b=c.querySelector('.badge'); if(b)b.remove(); });
     
-    log(`--- Round ${round} ---`, 'l-sys');
     updateUI();
     if(game.turn === 0) runAI();
 }
@@ -561,7 +593,7 @@ if (effectiveBluffRate > 0.3 && equity > 0.3 && equity < 0.65 && requiredEquity 
 }
 
     // 1. 기본 Bias (승률 기반)
-    let bias = (equity - 0.5) * 2.35;
+    let bias = (equity - 0.5) * 2.4;
     if(bias > 0) {
         [ACT.BET_H, ACT.BET_P, ACT.ALLIN].forEach(a => { if(valid.includes(a)) strat[a]*=(1+bias*1.5); });
         if(valid.includes(ACT.FOLD)) strat[ACT.FOLD]*=(1-bias*0.8);
