@@ -3,129 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Indian Hold'em (Async Training)</title>
+    <title>Indian Hold'em AI (Pro Version)</title>
     <style>
-        :root {
-            --bg-color: #2c3e50;
-            --table-color: #27ae60;
-            --card-bg: #ecf0f1;
-            --text-color: #ffffff;
-            --accent-color: #f1c40f;
-            --btn-color: #3498db;
-        }
-        body {
-            font-family: 'Segoe UI', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            min-height: 100vh;
-        }
-        .container {
-            width: 100%;
-            max-width: 500px;
-            background-color: #34495e;
-            border-radius: 15px;
-            overflow: hidden;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
-            position: relative;
-        }
+        /* UI 스타일은 기존과 동일하게 유지하되, 약간 더 진지한 톤으로 변경 */
+        :root { --bg-color: #212121; --table-color: #1b5e20; --card-bg: #e0e0e0; --text-color: #eee; --accent-color: #ffd700; --btn-color: #1976d2; }
+        body { font-family: 'Roboto', 'Segoe UI', sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; }
+        .container { width: 100%; max-width: 500px; background-color: #333; border-radius: 12px; overflow: hidden; box-shadow: 0 12px 24px rgba(0,0,0,0.6); position: relative; }
         
-        /* Loading Overlay */
-        #loading-overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(44, 62, 80, 0.98);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 100;
-        }
-        .spinner {
-            border: 4px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            border-top: 4px solid var(--accent-color);
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 20px;
-        }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        
-        #progress-container {
-            width: 80%;
-            height: 20px;
-            background: #555;
-            border-radius: 10px;
-            margin-top: 15px;
-            overflow: hidden;
-            position: relative;
-        }
-        #progress-bar {
-            width: 0%;
-            height: 100%;
-            background: linear-gradient(90deg, #f1c40f, #e67e22);
-            transition: width 0.2s;
-        }
-        #loading-text { font-weight: bold; margin-top: 10px; text-align: center; }
+        #loading-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(33, 33, 33, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
+        #progress-container { width: 80%; height: 16px; background: #555; border-radius: 8px; margin-top: 15px; overflow: hidden; }
+        #progress-bar { width: 0%; height: 100%; background: linear-gradient(90deg, #ffd700, #ff8c00); transition: width 0.1s; }
+        #loading-text { font-weight: bold; margin-top: 10px; color: var(--accent-color); font-size: 1.1em; text-align: center;}
 
-        /* Game Header */
-        .header { background: #2c3e50; padding: 15px; text-align: center; border-bottom: 2px solid #1abc9c; }
+        .header { background: #263238; padding: 15px; text-align: center; border-bottom: 2px solid #4caf50; }
         .stats-row { display: flex; justify-content: space-around; font-weight: bold; font-size: 1.1em; }
         
-        /* Table */
-        .table { background: var(--table-color); padding: 20px; min-height: 380px; text-align: center; position: relative; }
+        .table { background: radial-gradient(circle, #2e7d32 0%, #1b5e20 100%); padding: 20px; min-height: 380px; text-align: center; position: relative; }
+        .card-area { display: flex; justify-content: space-between; margin: 20px 0; }
+        .player-box { background: rgba(0,0,0,0.4); border-radius: 10px; padding: 10px; width: 45%; border: 1px solid rgba(255,255,255,0.1); }
         
-        .card-area { display: flex; justify-content: space-between; margin: 15px 0; }
-        .player-box { background: rgba(0,0,0,0.3); border-radius: 10px; padding: 10px; width: 45%; }
-        
-        .card {
-            background: var(--card-bg); color: #333; width: 60px; height: 90px;
-            border-radius: 6px; display: inline-flex; justify-content: center; align-items: center;
-            font-size: 1.8em; font-weight: bold; margin-top: 5px; box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
-        }
-        .card.red { color: #c0392b; }
-        .card.black { color: #2c3e50; }
-        .card.hidden { background: #7f8c8d; color: #bdc3c7; }
+        .card { background: var(--card-bg); color: #333; width: 60px; height: 90px; border-radius: 6px; display: inline-flex; justify-content: center; align-items: center; font-size: 1.8em; font-weight: bold; margin-top: 5px; box-shadow: 2px 2px 8px rgba(0,0,0,0.4); }
+        .card.red { color: #d32f2f; } .card.black { color: #212121; } .card.hidden { background: #607d8b; color: #cfd8dc; }
+        .pot-display { background: rgba(0,0,0,0.6); padding: 5px 20px; border-radius: 20px; display: inline-block; font-weight: bold; color: var(--accent-color); border: 1px solid var(--accent-color); margin-bottom: 10px;}
 
-        .pot-display { background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 15px; display: inline-block; font-weight: bold; color: var(--accent-color); margin-bottom: 10px;}
-
-        /* AI Visualization */
-        .ai-thought {
-            background: #fff; color: #333; border-radius: 8px; padding: 10px;
-            width: 90%; margin: 0 auto 10px auto; font-size: 0.85em; display: none;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-            position: relative; text-align: left;
-        }
-        .ai-thought::after {
-             content: ''; position: absolute; top: -8px; left: 20%;
-             border-width: 0 8px 8px 8px; border-style: solid; border-color: transparent transparent #fff transparent;
-        }
-        .bar-container { display: flex; height: 10px; margin-top: 4px; border-radius: 5px; overflow: hidden; background: #ddd; }
-        .bg-red { background: #e74c3c; } .bg-yellow { background: #f1c40f; } .bg-green { background: #2ecc71; }
-        
-        /* Typing Animation */
+        /* AI Thought */
+        .ai-thought { background: rgba(255,255,255,0.95); color: #222; border-radius: 8px; padding: 10px; width: 90%; margin: 0 auto 10px auto; font-size: 0.85em; display: none; box-shadow: 0 4px 8px rgba(0,0,0,0.3); text-align: left; }
+        .bar-container { display: flex; height: 12px; margin-top: 6px; border-radius: 6px; overflow: hidden; background: #ddd; }
+        .bg-red { background: #f44336; } .bg-yellow { background: #ffeb3b; } .bg-green { background: #4caf50; }
         .typing span { display: inline-block; width: 4px; height: 4px; background: #333; border-radius: 50%; animation: type 1s infinite; margin: 0 2px; }
         .typing span:nth-child(2) { animation-delay: 0.2s; } .typing span:nth-child(3) { animation-delay: 0.4s; }
         @keyframes type { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-4px);} }
 
-        /* Controls */
-        .controls { padding: 15px; background: #34495e; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        button { padding: 12px; border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: bold; font-size: 1em; transition: 0.1s; }
-        button:active { transform: scale(0.96); }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-        .btn-fold { background: #e74c3c; grid-column: span 2; }
-        .btn-check { background: #27ae60; grid-column: span 2; }
-        .btn-bet { background: #3498db; }
-        .btn-allin { background: #8e44ad; }
+        .controls { padding: 15px; background: #263238; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        button { padding: 12px; border: none; border-radius: 6px; color: white; cursor: pointer; font-weight: bold; font-size: 1em; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        button:active { transform: scale(0.96); } button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(100%); }
+        .btn-fold { background: #c62828; grid-column: span 2; } .btn-check { background: #2e7d32; grid-column: span 2; }
+        .btn-bet { background: #1565c0; } .btn-allin { background: #6a1b9a; }
 
-        .logs { height: 130px; overflow-y: auto; background: #222; color: #ccc; font-size: 0.85em; padding: 10px; border-top: 1px solid #444; text-align: left; }
-        .log-entry { border-bottom: 1px solid #333; padding-bottom: 2px; margin-bottom: 2px; }
-        .log-ai { color: #f39c12; } .log-user { color: #3498db; } .log-sys { color: #95a5a6; font-style: italic; }
+        .logs { height: 130px; overflow-y: auto; background: #111; color: #bbb; font-size: 0.85em; padding: 10px; border-top: 1px solid #444; text-align: left; scrollbar-width: thin; }
+        .log-entry { border-bottom: 1px solid #333; padding-bottom: 3px; margin-bottom: 3px; }
+        .log-ai { color: #ffb74d; } .log-user { color: #64b5f6; } .log-sys { color: #90a4ae; font-style: italic; }
     </style>
 </head>
 <body>
@@ -133,7 +50,7 @@
 <div class="container">
     <div id="loading-overlay">
         <div class="spinner"></div>
-        <div id="loading-text">Starting AI Training...<br>0%</div>
+        <div id="loading-text">Applying Linear CFR...<br><span style="font-size:0.8em; color:#bbb;">Optimizing Strategy</span></div>
         <div id="progress-container"><div id="progress-bar"></div></div>
     </div>
 
@@ -147,15 +64,15 @@
 
     <div class="table">
         <div class="ai-thought" id="ai-thought-box">
-            <div id="ai-msg">Thinking...</div>
-            <div style="margin-top:5px; color:#666; font-size:0.9em;">AI's Guess on ITS OWN card:</div>
+            <div id="ai-msg">Analyzing...</div>
+            <div style="margin-top:8px; font-weight:bold; font-size:0.9em; color:#444;">AI's Estimation of its OWN Hand:</div>
             <div class="bar-container" id="belief-bar">
                 <div class="bg-red" style="width:33%"></div>
                 <div class="bg-yellow" style="width:33%"></div>
                 <div class="bg-green" style="width:33%"></div>
             </div>
-            <div style="display:flex; justify-content:space-between; font-size:0.75em; color:#888;">
-                <span>Low</span><span>Mid</span><span>High</span>
+            <div style="display:flex; justify-content:space-between; font-size:0.75em; color:#666; margin-top:2px;">
+                <span>Weak (1-5)</span><span>Mid (6-8)</span><span>Strong (9-10)</span>
             </div>
         </div>
 
@@ -171,7 +88,7 @@
         </div>
 
         <div class="pot-display">Pot: <span id="pot-size">2.0</span></div>
-        <div id="game-status" style="color:#bdc3c7; font-size:0.9em; margin-top:5px;">Game Start</div>
+        <div id="game-status" style="color:#cfd8dc; font-size:0.9em; margin-top:10px; font-style:italic;">Ready</div>
     </div>
 
     <div class="controls">
@@ -182,15 +99,10 @@
         <button class="btn-bet" id="btn-bet3" onclick="humanAction(4)">Overbet (150%)</button>
         <button class="btn-allin" onclick="humanAction(5)">All-In</button>
     </div>
-
     <div class="logs" id="log-box"></div>
 </div>
 
 <script>
-/** * Indian Hold'em AI (Async Training Version)
- * Doesn't freeze the browser!
- */
-
 // --- CONFIG ---
 const RANKS = [1,2,3,4,5,6,7,8,9,10];
 const SUITS = ['s','h','d','c'];
@@ -201,9 +113,7 @@ const BET_MULTS = { 2:0.33, 3:0.75, 4:1.5, 5:999.0 };
 
 // --- HELPERS ---
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
-// This function yields control back to the UI thread
 function nextFrame() { return new Promise(r => setTimeout(r, 0)); }
-
 function weightedChoice(probs) {
     let r = Math.random(), sum = 0;
     for(let i=0; i<probs.length; i++) {
@@ -213,7 +123,7 @@ function weightedChoice(probs) {
     return probs.length-1;
 }
 
-// --- AI ENGINE (MCCFR) ---
+// --- MCCFR ENGINE (Linear CFR) ---
 class Node {
     constructor(n) { 
         this.regret = new Float32Array(n); 
@@ -234,30 +144,40 @@ class Solver {
     constructor() { this.nodes = {}; }
     getNode(key) { if(!this.nodes[key]) this.nodes[key] = new Node(6); return this.nodes[key]; }
     
-    // 비동기 학습 함수 (멈춤 방지)
+    // [Upgrade] Linear CFR: Discounting applied via 'weight' (iteration number)
     async train(iters, onProgress) {
-        const BATCH_SIZE = 200; // 200판 계산하고 화면 갱신
+        const BATCH_SIZE = 50; 
         
         for(let i=0; i<iters; i+=BATCH_SIZE) {
-            
-            // BATCH_SIZE만큼 빡세게 계산
             for(let j=0; j<BATCH_SIZE && (i+j)<iters; j++) {
-                let s0 = Math.floor(Math.random()*180)+20;
-                let s1 = Math.floor(Math.random()*180)+20;
+                let currentIter = i + j + 1;
+                // [Upgrade] Discounting Weight: t (Linear) or t^2. Using Linear 't' here.
+                // Recent iterations matter more.
+                let weight = currentIter; 
+
+                // [Upgrade] Targeted Stack Training
+                // 50% chance: Train near 100bb (Starting stack)
+                // 50% chance: Train random 20-200bb (Deep/Short stack robustness)
+                let s0, s1;
+                if (Math.random() < 0.5) {
+                    s0 = Math.floor(Math.random() * 40) + 80; // 80~120
+                    s1 = Math.floor(Math.random() * 40) + 80;
+                } else {
+                    s0 = Math.floor(Math.random() * 180) + 20; // 20~200
+                    s1 = Math.floor(Math.random() * 180) + 20;
+                }
+
                 let state = new State(s0, s1);
                 state.turn = Math.random()<0.5 ? 0 : 1;
-                this.cfr(state, (i+j)%2, 1.0);
+                this.cfr(state, (i+j)%2, 1.0, weight);
             }
-            
-            // 화면 갱신을 위해 잠깐 쉼 (Yield)
             if(onProgress) onProgress((i+BATCH_SIZE)/iters);
             await nextFrame(); 
         }
     }
 
-    cfr(state, p, pr) {
+    cfr(state, p, pr, weight) {
         if(state.done) return state.getPayoff(p);
-
         let valid = state.validActions();
         if(valid.length===0) return 0;
 
@@ -275,18 +195,21 @@ class Solver {
             let a = weightedChoice(probs);
             if(!valid.includes(a)) a = valid[Math.floor(Math.random()*valid.length)];
             let next = state.clone(); next.apply(a);
-            return this.cfr(next, p, pr);
+            return this.cfr(next, p, pr, weight);
         } else {
             let util = new Float32Array(6);
             let nodeUtil = 0;
             valid.forEach(a => {
                 let next = state.clone(); next.apply(a);
-                util[a] = this.cfr(next, p, pr * probs[a]);
+                util[a] = this.cfr(next, p, pr * probs[a], weight);
                 nodeUtil += probs[a] * util[a];
             });
+            
+            // [Upgrade] Apply Linear Weighting to Regret and Strategy
             valid.forEach(a => {
-                node.regret[a] += util[a] - nodeUtil;
-                node.strategy[a] += pr * probs[a];
+                let regret = util[a] - nodeUtil;
+                node.regret[a] += regret * weight; // Weighted Regret
+                node.strategy[a] += (pr * probs[a]) * weight; // Weighted Strategy
             });
             return nodeUtil;
         }
@@ -298,14 +221,13 @@ class State {
         this.deck = [];
         for(let r of RANKS) for(let s of SUITS) this.deck.push({r,s});
         for(let i=39; i>0; i--) { let j=Math.floor(Math.random()*(i+1)); [this.deck[i],this.deck[j]]=[this.deck[j],this.deck[i]]; }
-        
         this.stacks = [s0-1, s1-1];
         this.bets = [1, 1];
         this.pot = 2;
         this.contrib = [1, 1];
         this.hands = [this.deck.pop(), this.deck.pop()];
         this.hist = [];
-        this.turn = 1; // Human first
+        this.turn = 1; 
         this.done = false;
     }
     
@@ -314,6 +236,9 @@ class State {
         if(this.stacks[me]<=0) return [ACT.FOLD, ACT.CHECK];
         if(this.stacks[opp]<=0 && this.bets[opp]>this.bets[me]) return [ACT.FOLD, ACT.CHECK];
         
+        let aggressiveActs = this.hist.filter(a => a >= ACT.BET_S).length;
+        if(aggressiveActs >= 3) return [ACT.FOLD, ACT.CHECK]; 
+
         let acts = [ACT.FOLD, ACT.CHECK];
         let diff = this.bets[opp] - this.bets[me];
         let target = this.pot + diff;
@@ -335,7 +260,6 @@ class State {
         
         let diff = this.bets[opp] - this.bets[me];
         let amt = 0;
-        
         if(a===ACT.CHECK) amt = Math.min(diff, this.stacks[me]);
         else if(a===ACT.ALLIN) amt = this.stacks[me];
         else {
@@ -385,12 +309,11 @@ window.onload = function() {
     let bar = document.getElementById('progress-bar');
     let txt = document.getElementById('loading-text');
     
-    // Start Async Training
-    // 10,000 Iterations is enough for Indian Hold'em (small state space)
-    solver.train(10000, (pct) => {
+    // 5000 Iterations with Linear Weighting
+    solver.train(5000, (pct) => {
         let p = Math.min(100, Math.floor(pct*100));
         bar.style.width = p + '%';
-        txt.innerHTML = `Training AI... ${p}%<br><span style="font-size:0.8em; font-weight:normal;">Calculated ${Math.floor(pct*10000)} hands</span>`;
+        txt.innerHTML = `Applying Linear CFR... ${p}%`;
     }).then(() => {
         document.getElementById('loading-overlay').style.display = 'none';
         startRound();
@@ -443,10 +366,7 @@ function updateUI() {
 }
 
 function startRound() {
-    if(aiChips<=0 || myChips<=0) { 
-        alert(aiChips<=0 ? "You Win!" : "You Lose!");
-        return; 
-    }
+    if(aiChips<=0 || myChips<=0) { alert(aiChips<=0 ? "You Win!" : "You Lose!"); return; }
     round++;
     game = new State(aiChips, myChips);
     log(`--- Round ${round} ---`, 'log-sys');
@@ -459,11 +379,27 @@ async function runAI() {
     updateUI();
     document.getElementById('ai-thought-box').style.display = 'block';
     
-    // AI Thought Visualization
+    // [Upgrade] Dynamic Belief Visualization based on Bet Size
     let belief = new Float32Array(11).fill(1);
     game.hist.forEach(a => {
-        if(a===ACT.CHECK) { for(let i=1;i<=5;i++) belief[i]*=0.7; for(let i=6;i<=10;i++) belief[i]*=1.3; }
-        else if(a>=ACT.BET_S) { for(let i=1;i<=5;i++) belief[i]*=1.5; for(let i=6;i<=10;i++) belief[i]*=0.6; }
+        if(a===ACT.CHECK) { 
+            // Check suggests strength (trapping) or mid strength
+            for(let i=1;i<=5;i++) belief[i]*=0.6; 
+            for(let i=6;i<=10;i++) belief[i]*=1.4; 
+        }
+        else if(a===ACT.BET_S) { 
+            // Small bet: Maybe value extraction or weak bluff
+            for(let i=1;i<=5;i++) belief[i]*=1.2; 
+            for(let i=6;i<=10;i++) belief[i]*=0.8; 
+        }
+        else if(a===ACT.BET_L || a===ACT.BET_O || a===ACT.ALLIN) { 
+            // Big bet: Polarized (Very strong or Very weak/Bluff)
+            // Human tends to bet big when they see opponent is weak (so they think they are strong?)
+            // No, human bets big -> human sees LOW card on AI.
+            // So AI thinks it has LOW card.
+            for(let i=1;i<=5;i++) belief[i]*=2.0; 
+            for(let i=6;i<=10;i++) belief[i]*=0.4; 
+        }
     });
     let sum=0; for(let i=1;i<=10;i++) sum+=belief[i];
     let low=0, mid=0, high=0;
@@ -524,4 +460,3 @@ function endRound() {
 </script>
 </body>
 </html>
-
