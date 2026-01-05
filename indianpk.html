@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Indian Hold'em : Pro Edition</title>
+    <title>Indian Hold'em : Advanced AI</title>
     <style>
         :root { --bg-color: #121212; --table-bg: #1b5e20; --card-bg: #eee; --accent: #ffd700; --danger: #ef5350; --btn-primary: #1565c0; }
         body { font-family: 'Segoe UI', Roboto, sans-serif; background: var(--bg-color); color: #e0e0e0; margin: 0; display: flex; justify-content: center; min-height: 100vh; overflow: hidden; }
@@ -23,7 +23,8 @@
         .table { flex: 1; background: radial-gradient(circle at center, #2e7d32 0%, #1b5e20 80%); position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 20px; }
         
         /* Pot & Status */
-        .pot-box { background: rgba(0,0,0,0.6); padding: 8px 25px; border-radius: 30px; border: 1px solid var(--accent); color: var(--accent); font-weight: bold; font-size: 1.4em; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .pot-box { background: rgba(0,0,0,0.6); padding: 8px 25px; border-radius: 30px; border: 1px solid var(--accent); color: var(--accent); font-weight: bold; font-size: 1.4em; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: all 0.3s; }
+        .pot-box.carried { box-shadow: 0 0 20px #ffd700; border: 2px solid #fff; background: rgba(255, 215, 0, 0.2); }
         .status-msg { color: #bdbdbd; font-style: italic; font-size: 0.9em; min-height: 1.2em; margin-bottom: 10px; text-align: center; }
 
         /* Players & Cards */
@@ -52,7 +53,7 @@
             display: none; transform-origin: bottom; animation: floatUp 0.4s;
         }
 
-        /* Controls (Updated for Slider) */
+        /* Controls */
         .controls { padding: 15px; background: #1e1e1e; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid #333; }
         
         .btn-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
@@ -86,9 +87,9 @@
 <div class="container">
     <div id="loading-screen">
         <div style="color:var(--accent); font-weight:bold; font-size:1.4em; text-shadow: 0 0 10px rgba(255,215,0,0.5);">Indian Hold'em</div>
-        <div style="color:#aaa; font-size:0.9em; margin-bottom:20px;">Pro Edition</div>
+        <div style="color:#aaa; font-size:0.9em; margin-bottom:20px;">Perfect AI + Hero Call</div>
         <div class="loader-bar-box"><div class="loader-bar" id="load-bar"></div></div>
-        <div style="color:#777; font-size:0.8em; margin-top:10px;">AI Training...</div>
+        <div style="color:#777; font-size:0.8em; margin-top:10px;">Neural Training...</div>
     </div>
 
     <div class="header">
@@ -103,9 +104,11 @@
             <div style="height:4px; background:#ddd; margin-top:4px; border-radius:2px; overflow:hidden;">
                 <div id="win-rate-bar" style="width:50%; height:100%; background:#43a047;"></div>
             </div>
+            <div id="ai-risk" style="font-size:0.75em; color:#ef5350; margin-top:2px; display:none;"></div>
+            <div id="ai-hero" style="font-size:0.75em; color:#29b6f6; margin-top:2px; display:none;"></div>
         </div>
 
-        <div class="pot-box">POT: <span id="pot">2.0</span></div>
+        <div class="pot-box" id="pot-box">POT: <span id="pot">2.0</span></div>
 
         <div class="play-area">
             <div class="player">
@@ -146,7 +149,6 @@
 const RANKS = [1,2,3,4,5,6,7,8,9,10];
 const ACT = { FOLD:0, CHECK:1, BET_H:2, BET_P:3, BET_O:4, ALLIN:5 };
 const ACT_TXT = ["Fold", "Check/Call", "Bet Half", "Bet Pot", "Overbet", "All-In"];
-// Changed to Standard Poker Sizes
 const MULTS = { 2:0.5, 3:1.0, 4:1.5, 5:999 }; 
 
 /* --- 2. SHOE SYSTEM --- */
@@ -238,7 +240,13 @@ class State {
         else { let d=[]; for(let r of RANKS)d.push({r,s:'x'}); this.hands=[d[Math.floor(Math.random()*10)],d[Math.floor(Math.random()*10)]]; }
         this.stacks = [s0-1, s1-1];
         this.bets = [1, 1];
-        this.pot = 2;
+        
+        // [FIX] Carried Pot 처리 로직 개선
+        let carried = window.carriedPot || 0;
+        this.pot = 2 + carried;
+        this.wasCarried = carried > 0;
+        window.carriedPot = 0; // 초기화
+        
         this.contrib = [1, 1];
         this.hist = [];
         this.turn = 1; this.done = false;
@@ -250,7 +258,7 @@ class State {
         let acts = [ACT.FOLD, ACT.CHECK];
         let diff = this.bets[opp] - this.bets[me];
         let target = this.pot + diff;
-        for(let a of [2,3,5]) { // AI uses Standard Buckets (Half, Pot, Allin)
+        for(let a of [2,3,5]) { 
             if(a===ACT.ALLIN) { acts.push(a); continue; }
             let raise = target * MULTS[a];
             if(diff+raise < this.stacks[me] && raise >= 1) acts.push(a);
@@ -266,10 +274,8 @@ class State {
         let amt = 0;
 
         if (customAmt > 0) {
-            // Slider Bet (Custom Amount)
             amt = Math.min(this.stacks[me], customAmt);
         } else {
-            // Standard Button Bet
             amt = (a===ACT.CHECK) ? Math.min(diff, this.stacks[me]) :
                   (a===ACT.ALLIN) ? this.stacks[me] :
                   Math.min(this.stacks[me], diff + Math.floor((this.pot+diff)*MULTS[a]));
@@ -277,9 +283,7 @@ class State {
         
         this.stacks[me] -= amt; this.bets[me] += amt; this.contrib[me] += amt; this.pot += amt;
         
-        // Round End Condition
         if(this.bets[0]===this.bets[1] && this.hist.length>=1) {
-            // Check-Check or Bet-Call
             if(a===ACT.CHECK || a===ACT.FOLD || diff > 0 || (customAmt === diff)) { 
                  if(this.hist.length>=2 || diff>0) this.done = true; 
             }
@@ -305,7 +309,9 @@ class State {
     
     clone() {
         let s = new State(0,0);
-        s.hands=[...this.hands]; s.stacks=[...this.stacks]; s.bets=[...this.bets];
+        // [FIX] Deep Copy for objects in array
+        s.hands = this.hands.map(h => ({...h})); 
+        s.stacks=[...this.stacks]; s.bets=[...this.bets];
         s.pot=this.pot; s.contrib=[...this.contrib]; s.hist=[...this.hist]; 
         s.turn=this.turn; s.done=this.done;
         return s;
@@ -314,12 +320,21 @@ class State {
 
 /* --- 5. CONTROLLER --- */
 const solver = new Solver();
-const userStats = { totalHands:0, foldCount:0, getFoldRate: function(){return this.totalHands<1?0:this.foldCount/this.totalHands;} };
+// [UPDATE] 유저 성향 분석 강화 (Bluff Detection)
+const userStats = { 
+    totalHands:0, foldCount:0, 
+    bluffOpportunities: 0, // 블러핑이 가능한 상황(쇼다운)
+    bluffsDetected: 0,     // 실제 블러핑 감지 횟수
+    getFoldRate: function(){return this.totalHands<1?0:this.foldCount/this.totalHands;},
+    getBluffRate: function(){return this.bluffOpportunities<1?0:this.bluffsDetected/this.bluffOpportunities;}
+};
+
 let game = null, round = 0, chips = [100, 100];
+window.carriedPot = 0;
 
 window.onload = () => {
     shoe.init();
-    solver.train(30000, (pct) => { document.getElementById('load-bar').style.width = (pct*100)+'%'; })
+    solver.train(50000, (pct) => { document.getElementById('load-bar').style.width = (pct*100)+'%'; })
           .then(() => { document.getElementById('loading-screen').style.display = 'none'; startRound(); });
 };
 
@@ -331,17 +346,28 @@ function log(msg, cls) {
 function updateUI(showHidden = false) {
     document.getElementById('s-ai').innerText = chips[0].toFixed(0);
     document.getElementById('s-me').innerText = chips[1].toFixed(0);
-    document.getElementById('pot').innerText = game.pot.toFixed(0);
+    
+    // [UPDATE] Carried Pot 시각화
+    let potEl = document.getElementById('pot');
+    let potBox = document.getElementById('pot-box');
+    potEl.innerText = game.pot.toFixed(0);
+    if(game.wasCarried && game.pot > 0) {
+         potEl.innerText += " (Carried)";
+         potBox.classList.add('carried');
+    } else {
+         potBox.classList.remove('carried');
+    }
+
     document.getElementById('b-ai').innerText = game.bets[0].toFixed(0);
     document.getElementById('b-me').innerText = game.bets[1].toFixed(0);
     
     let c0=game.hands[0], c1=game.hands[1];
     let el0=document.getElementById('c-ai'); el0.innerText=c0.r; el0.className=`card ${['h','d'].includes(c0.s)?'red':'black'}`;
+    
     let el1=document.getElementById('c-me'); 
     if(showHidden) { el1.innerText=c1.r; el1.className=`card ${['h','d'].includes(c1.s)?'red':'black'}`; }
     else { el1.innerText="?"; el1.className="card hidden"; }
 
-    // Controls Update
     let btns = document.querySelectorAll('.controls button');
     let slider = document.getElementById('bet-slider');
     let valid = game.validActs();
@@ -357,7 +383,6 @@ function updateUI(showHidden = false) {
             if(idx>=0 && btns[idx]) btns[idx].disabled = false;
         });
         
-        // Slider Logic
         let minBet = diff > 0 ? diff : 1;
         let maxBet = game.stacks[1];
         if(maxBet >= minBet) {
@@ -388,6 +413,8 @@ function startRound() {
     game = new State(chips[0], chips[1], h1, h2);
     
     document.getElementById('ai-thought').style.display = 'none';
+    document.getElementById('ai-risk').style.display = 'none';
+    document.getElementById('ai-hero').style.display = 'none';
     document.querySelectorAll('.card').forEach(c => { c.classList.remove('winner','loser'); let b=c.querySelector('.badge'); if(b)b.remove(); });
     
     log(`--- Round ${round} ---`, 'l-sys');
@@ -395,26 +422,49 @@ function startRound() {
     if(game.turn === 0) runAI();
 }
 
-function calculateEquity(myRank, shoeCards) {
-    let wins=0, total=0, scenarios=[...shoeCards];
-    for(let c of scenarios) {
+function analyzeHand(oppRank, unknownCards) {
+    let wins=0, total=0, tenCount=0;
+    for(let c of unknownCards) {
+        let myPotentialRank = c.r;
         total++;
-        if(myRank===1 && c.r===10) { wins++; continue; }
-        if(myRank===10 && c.r===1) continue;
-        if(myRank>c.r) wins++; else if(myRank===c.r) wins+=0.5;
+        if(myPotentialRank === 10) tenCount++;
+        
+        if(myPotentialRank===1 && oppRank===10) { wins++; continue; }
+        if(myPotentialRank===10 && oppRank===1) continue;
+        if(myPotentialRank > oppRank) wins++;
+        else if(myPotentialRank === oppRank) wins+=0.5;
     }
-    return total===0?0.5:wins/total;
+    return {
+        equity: total===0 ? 0.5 : wins/total,
+        probTen: total===0 ? 0 : tenCount/total
+    };
 }
 
 async function runAI() {
     updateUI(); document.getElementById('ai-thought').style.display='block';
     
-    let aiCard = game.hands[0].r;
-    let equity = calculateEquity(aiCard, shoe.cards);
+    let playerCardRank = game.hands[1].r; 
+    let unknownPool = [...shoe.cards, game.hands[0]]; 
+    
+    let analysis = analyzeHand(playerCardRank, unknownPool);
+    let equity = analysis.equity;
+    let probTen = analysis.probTen;
+    
     document.getElementById('ai-text').innerText = `Win Rate: ${(equity*100).toFixed(0)}% (Pot: ${game.pot})`;
     let bar = document.getElementById('win-rate-bar');
     bar.style.width=(equity*100)+'%';
     bar.style.background = equity>0.6?'#43a047':(equity<0.4?'#e53935':'#fdd835');
+
+    let riskEl = document.getElementById('ai-risk');
+    let heroEl = document.getElementById('ai-hero');
+    
+    // UI 표시 로직
+    if(probTen > 0.1) {
+        riskEl.style.display = 'block';
+        riskEl.innerText = `⚠️ 10-Risk: ${(probTen*100).toFixed(0)}%`;
+    } else riskEl.style.display = 'none';
+    
+    heroEl.style.display = 'none';
 
     await new Promise(r=>setTimeout(r, 600+Math.random()*800));
 
@@ -422,7 +472,7 @@ async function runAI() {
     let strat = solver.getNode(key).getAvgStrat();
     let valid = game.validActs();
 
-    // Adjust Strategy
+    // 1. 기본 Bias (승률 기반)
     let bias = (equity - 0.5) * 2.0;
     if(bias > 0) {
         [ACT.BET_H, ACT.BET_P, ACT.ALLIN].forEach(a => { if(valid.includes(a)) strat[a]*=(1+bias*1.5); });
@@ -433,14 +483,48 @@ async function runAI() {
         [ACT.BET_H, ACT.BET_P, ACT.ALLIN].forEach(a => { if(valid.includes(a)) strat[a]*=(1-def*0.8); });
     }
 
-    // Exploit
+    // 2. [UPDATE] 보수적인 10 패널티 회피 로직
+    // 10일 확률 10% 미만이면 무시. 그 이상일 때만 선형적으로 폴드 확률 감소.
+    // 최대 감소폭 80% (이전에는 100%여서 절대 안 죽음)
+    if (probTen > 0.1 && valid.includes(ACT.FOLD)) {
+        let penaltyFactor = Math.min(Math.max(probTen - 0.1, 0) * 2.5, 0.8);
+        
+        let foldProb = strat[ACT.FOLD];
+        let reduceAmount = foldProb * penaltyFactor; 
+        
+        strat[ACT.FOLD] -= reduceAmount;
+        let safeOption = valid.includes(ACT.CHECK) ? ACT.CHECK : 
+                         (valid.includes(ACT.BET_H) ? ACT.BET_H : -1);
+        if(safeOption !== -1) strat[safeOption] += reduceAmount;
+        strat[ACT.FOLD] = Math.max(strat[ACT.FOLD], 0.05); // 최소 5%는 남김
+    }
+
+    // 3. [UPDATE] Hero Call (블러핑 캐치)
+    let bluffRate = userStats.getBluffRate();
+    if (bluffRate > 0.25 && equity > 0.35 && equity < 0.65) {
+        if(valid.includes(ACT.FOLD) && valid.includes(ACT.CHECK)) {
+            
+            // [수정] 블러프 성향이 40%를 넘는 '습관적 뻥카꾼'이면 80% 확률로 콜 전환
+            // 그 정도는 아니면 50%만 전환 (보수적 접근)
+            let factor = (bluffRate > 0.4) ? 0.7 : 0.5; 
+            
+            let shift = strat[ACT.FOLD] * factor; 
+            
+            strat[ACT.FOLD] -= shift;
+            strat[ACT.CHECK] += shift;
+            
+            heroEl.style.display = 'block';
+            heroEl.innerText = `👁️ Hero Call Mode (Bluff: ${(bluffRate*100).toFixed(0)}%)`;
+        }
+    }
+
+    // 4. 사용자 폴드 성향 대응 (기존 로직 유지)
     if (userStats.totalHands >= 5) {
         let diff = userStats.getFoldRate() - 0.4;
         let mult = Math.min(Math.max(1.0 + (diff*0.5), 0.6), 1.5);
         [ACT.BET_H, ACT.BET_P, ACT.ALLIN].forEach(a => { if(valid.includes(a)) strat[a] *= mult; });
     }
 
-    // Normalize
     let vSum=0; valid.forEach(a=>vSum+=strat[a]);
     let action = valid.includes(ACT.CHECK)?ACT.CHECK:ACT.FOLD;
     if(vSum>0) {
@@ -453,7 +537,6 @@ async function runAI() {
     if(game.done) endRound(); else updateUI();
 }
 
-// User Action Handler
 function act(a) {
     if(game.turn!==1) return;
     if(a===ACT.FOLD) userStats.foldCount++;
@@ -462,26 +545,23 @@ function act(a) {
     if(game.done) endRound(); else runAI();
 }
 
-// User Slider Action
 function actCustom() {
     if(game.turn!==1) return;
     let val = parseInt(document.getElementById('bet-slider').value);
     let diff = game.bets[0] - game.bets[1];
     
-    // Map custom amount to closest AI bucket for game history consistency
     let pot = game.pot + diff;
     let ratio = val / pot;
-    let aiAct = ACT.BET_P; // Default default
+    let aiAct = ACT.BET_P; 
     if (val === game.stacks[1]) aiAct = ACT.ALLIN;
     else if (val <= diff) aiAct = ACT.CHECK;
-    else if (ratio < 0.4) aiAct = ACT.BET_H; // Treat as small/half
-    else if (ratio < 1.2) aiAct = ACT.BET_P; // Treat as pot
-    else aiAct = ACT.BET_O; // Overbet
+    else if (ratio < 0.4) aiAct = ACT.BET_H;
+    else if (ratio < 1.2) aiAct = ACT.BET_P; 
+    else aiAct = ACT.BET_O;
 
     let txt = (val === diff && diff > 0) ? "Call" : "Bet";
     log(`👤 You: ${txt} ${val} (Custom)`, 'l-user');
     
-    // Pass custom amount to apply logic
     game.apply(aiAct, val);
     if(game.done) endRound(); else runAI();
 }
@@ -491,6 +571,28 @@ function endRound() {
     let last = game.hist[game.hist.length-1];
     let aiCard = document.getElementById('c-ai');
     let myCard = document.getElementById('c-me');
+
+    // [UPDATE] 블러핑 통계 수집
+    // 조건: 쇼다운까지 감(Fold 아님) AND 상대(나)가 짐 AND 내 카드가 6 이하
+    if(last !== ACT.FOLD) {
+        let myRank = game.hands[1].r;
+        let aiRank = game.hands[0].r;
+        let iLost = false;
+        
+        // 패배 조건 계산
+        if((myRank===1 && aiRank===10)); // 승리
+        else if((myRank===10 && aiRank===1)); // 패배
+        else if(myRank < aiRank) iLost = true;
+
+        if (iLost) {
+            userStats.bluffOpportunities++;
+            // 낮은 패로 공격적으로 베팅했는지 확인 (베팅 총액이 높음)
+            if (game.contrib[1] > 10 && myRank <= 6) {
+                userStats.bluffsDetected++;
+                log(`🕵️ Bluff Detected! (Rank ${myRank})`, 'l-sys');
+            }
+        }
+    }
 
     if(last === ACT.FOLD) {
         let folder = game.turn;
@@ -506,11 +608,19 @@ function endRound() {
         }
     }
 
-    if(p>0) { log(`🎉 WIN (+${p})`, 'l-user'); myCard.classList.add('winner'); aiCard.classList.add('loser'); }
-    else if(p<0) { log(`💀 LOSE (${p})`, 'l-ai'); aiCard.classList.add('winner'); myCard.classList.add('loser'); }
-    else log(`🤝 DRAW`, 'l-sys');
+    if(p>0) { 
+        log(`🎉 WIN (+${p})`, 'l-user'); myCard.classList.add('winner'); aiCard.classList.add('loser'); 
+        chips[1]+=p; chips[0]-=p;
+    }
+    else if(p<0) { 
+        log(`💀 LOSE (${p})`, 'l-ai'); aiCard.classList.add('winner'); myCard.classList.add('loser'); 
+        chips[1]+=p; chips[0]-=p;
+    }
+    else {
+        window.carriedPot = game.pot;
+        log(`🤝 DRAW - Pot (${game.pot}) Carried Over!`, 'l-sys');
+    }
 
-    chips[1]+=p; chips[0]-=p;
     setTimeout(startRound, 2500);
 }
 
@@ -520,4 +630,3 @@ function addBadge(el, txt, cls) {
 </script>
 </body>
 </html>
-
