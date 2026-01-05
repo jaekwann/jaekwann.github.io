@@ -501,6 +501,65 @@ async function runAI() {
     let strat = solver.getNode(key).getAvgStrat();
     let valid = game.validActs();
 
+    /* --- [Logic Update] Pot Odds & Aggression Check --- */
+
+// 1. Pot Odds 계산 (정확함)
+// diff는 상대가 더 건 금액. 즉 내가 콜(Call)해야 하는 비용.
+let callCost = game.bets[1] - game.bets[0]; 
+// 승률이 이 값보다 낮으면 수학적으로 손해 (Break-even Point)
+let requiredEquity = callCost > 0 ? callCost / (game.pot + callCost) : 0;
+
+// 2. Pot Odds가 나쁠 때의 방어 로직 (Deep Stack 보호)
+if (requiredEquity > 0.35) { // 이기기 위해 35% 이상의 승률이 필요할 만큼 비쌀 때
+    // 단, 1(혁명), 9, 10(최강)은 절대 죽지 않음 (Whitelist)
+    if (![1, 9, 10].includes(game.hands[0].r)) {
+        strat[ACT.FOLD] *= 2.0; // 폴드 확률 2배 증가 (무리하지 않음)
+    }
+}
+
+// 3. 상대 공격성 패턴 감지 (Safe Logic)
+// 현재 AI 턴이므로, 히스토리의 마지막(len-1)은 상대방, 그 전(len-2)은 나, 그 전전(len-3)은 상대방...
+let aggroCount = 0;
+let hLen = game.hist.length;
+// 상대방의 최근 2번 행동(직전, 3턴전)만 체크
+[1, 3].forEach(offset => {
+    let idx = hLen - offset;
+    // [2:Half, 3:Pot, 4:Over, 5:Allin] 공격적 액션인지 확인
+    if (idx >= 0 && [2, 3, 4, 5].includes(game.hist[idx])) {
+        aggroCount++;
+    }
+});
+
+// 4. EV+ Hero Call (동적 블러프 감지)
+let effectiveBluffRate = userStats.getBluffRate();
+
+// 상대가 최근 2번의 기회 중 1번 이상 공격적이었다면? -> 분위기 탐지
+if (aggroCount >= 1) { 
+    effectiveBluffRate += 0.15; // "어? 얘 지금 달리는 중이네?" (감지율 15% 부스트)
+    // 2번 연속 공격이면 더 의심 (선택사항)
+    if (aggroCount >= 2) effectiveBluffRate += 0.10; 
+}
+
+// 조건: 상대가 미친듯이 공격 중(BluffRate 높음) + 내 패는 애매(30~65%) + 팟 오즈는 나쁨(비쌈)
+if (effectiveBluffRate > 0.3 && equity > 0.3 && equity < 0.65 && requiredEquity > 0.3) {
+    
+    // Pot Odds가 안 나와도(비싸도), 상대가 뻥카일 확률이 높으니 콜을 땀 (EV+)
+    // 45% 이상의 '상습범'이면 70% 확률로 콜 전환, 아니면 50%
+    let heroFactor = effectiveBluffRate > 0.45 ? 0.7 : 0.5;
+    
+    let shift = strat[ACT.FOLD] * heroFactor;
+    strat[ACT.FOLD] -= shift;
+    
+    // Check(Call)에 비중을 싣되, 상황에 따라 Half 베팅으로 역공(Re-raise)도 살짝 고려 가능
+    // 여기선 안전하게 Check(Call)로 몰아줌
+    if (valid.includes(ACT.CHECK)) strat[ACT.CHECK] += shift;
+
+    // UI 알림
+    let heroEl = document.getElementById('ai-hero');
+    heroEl.style.display = 'block';
+    heroEl.innerText = `👁️ Hero Call! (Bluff ${(effectiveBluffRate*100).toFixed(0)}% / Aggro detected)`;
+}
+
     // 1. 기본 Bias (승률 기반)
     let bias = (equity - 0.5) * 2.0;
     if(bias > 0) {
@@ -528,24 +587,6 @@ async function runAI() {
         strat[ACT.FOLD] = Math.max(strat[ACT.FOLD], 0.05); // 최소 5%는 남김
     }
 
-    // 3. [UPDATE] Hero Call (블러핑 캐치)
-    let bluffRate = userStats.getBluffRate();
-    if (bluffRate > 0.25 && equity > 0.35 && equity < 0.65) {
-        if(valid.includes(ACT.FOLD) && valid.includes(ACT.CHECK)) {
-            
-            // [수정] 블러프 성향이 40%를 넘는 '습관적 뻥카꾼'이면 80% 확률로 콜 전환
-            // 그 정도는 아니면 50%만 전환 (보수적 접근)
-            let factor = (bluffRate > 0.4) ? 0.7 : 0.5; 
-            
-            let shift = strat[ACT.FOLD] * factor; 
-            
-            strat[ACT.FOLD] -= shift;
-            strat[ACT.CHECK] += shift;
-            
-            heroEl.style.display = 'block';
-            heroEl.innerText = `👁️ Hero Call Mode (Bluff: ${(bluffRate*100).toFixed(0)}%)`;
-        }
-    }
 
     // 4. 사용자 폴드 성향 대응 (기존 로직 유지)
     if (userStats.totalHands >= 5) {
@@ -696,13 +737,10 @@ function endRound() {
         setTimeout(startRound, 2500);
     }
 }
-    
+
 function addBadge(el, txt, cls) {
     let b = document.createElement('div'); b.className = 'badge '+cls; b.innerText = txt; el.appendChild(b);
 }
 </script>
 </body>
 </html>
-
-
-
