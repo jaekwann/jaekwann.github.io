@@ -648,39 +648,40 @@ function endRound() {
         winner = 1 - game.turn; // 폴드한 사람의 반대편이 승리
     } else {
         // 쇼다운 판정 (혁명 포함)
-        if((r0===1 && r1===10)) winner = 0;      // AI 혁명 승
+        if((r0===1 && r1===10)) winner = 0;       // AI 혁명 승
         else if((r0===10 && r1===1)) winner = 1; // 플레이어 혁명 승
         else if(r0 > r1) winner = 0;
         else if(r1 > r0) winner = 1;
     }
 
     // 2. 칩 정산 준비
-    // 일단 판돈을 다 걷어갔다고 가정하고 시작 (내 스택에서 차감)
+    // 일단 판돈을 다 걷어갔다고 가정 (내 스택에서 차감)
     chips[0] -= game.contrib[0];
     chips[1] -= game.contrib[1];
 
     if(last === ACT.FOLD) {
         let folder = game.turn; // 죽은 사람
-        // 죽은 사람 패가 10이면 패널티 부과
+        // 죽은 사람 패가 10이면 패널티 부과 (상대에게 10칩 전달)
         if(game.hands[folder].r === 10) {
-            // 패널티 10개를 뺏어서 상대에게 줌
-            if(folder === 0) { 
-                chips[0] -= 10; 
-                chips[1] += 10; 
-            } else { 
-                chips[1] -= 10; 
-                chips[0] += 10; 
-            }
+            if(folder === 0) { chips[0] -= 10; chips[1] += 10; }
+            else { chips[1] -= 10; chips[0] += 10; }
         }
     }
 
-    // 초과 베팅금(Excess) 계산: 더 많이 베팅한 사람에게 즉시 환불
-    // (이전 답변의 All-in 로직으로 인해 발생 빈도는 줄었으나 안전장치로 유지)
+    // [중요] 초과 베팅금(Excess) 계산: 콜 받지 않은 금액은 즉시 환불 (Uncalled Bet)
+    // 예: 나 5 베팅, AI 폴드 -> 차액 5는 내가 다시 가져감 (승리 금액 아님)
     let excess = Math.abs(game.contrib[0] - game.contrib[1]);
-    if(game.contrib[0] > game.contrib[1]) chips[0] += excess;
-    else chips[1] += excess;
+    let refund0 = 0, refund1 = 0;
+    
+    if(game.contrib[0] > game.contrib[1]) {
+        chips[0] += excess;
+        refund0 = excess; // AI가 돌려받은 금액
+    } else {
+        chips[1] += excess;
+        refund1 = excess; // 내가 돌려받은 금액
+    }
 
-    // 실제 승부 팟 (초과금을 제외한 금액)
+    // 실제 승부 팟 (초과금을 제외한 매칭된 금액)
     let mainPot = game.pot - excess;
 
     let aiCard = document.getElementById('c-ai');
@@ -708,34 +709,36 @@ function endRound() {
         }
     }
 
-    // 4. 팟 분배 (여기가 수정됨!)
+    // 4. 팟 분배 및 로그 출력 수정
     if(winner === 0) { // AI 승리
-        log(`💀 LOSE (-${(mainPot - game.contrib[0]).toFixed(0)})`, 'l-ai');
-        aiCard.classList.add('winner'); myCard.classList.add('loser');
         chips[0] += mainPot;
         window.carriedPot = 0;
+        
+        // [FIX] 로그 계산: (메인팟 + 환불금) - 내 총 투자금
+        let profit = (mainPot + refund0) - game.contrib[0]; 
+        log(`💀 LOSE (-${(game.contrib[1] - refund1).toFixed(0)})`, 'l-ai'); // 내 손해는 (낸 돈 - 돌려받은 돈)
+        
+        aiCard.classList.add('winner'); myCard.classList.add('loser');
     } 
     else if(winner === 1) { // 플레이어 승리
-        log(`🎉 WIN (+${(mainPot - game.contrib[1]).toFixed(0)})`, 'l-user');
-        myCard.classList.add('winner'); aiCard.classList.add('loser');
         chips[1] += mainPot;
         window.carriedPot = 0;
+
+        // [FIX] 로그 계산: (메인팟 + 환불금) - 내 총 투자금
+        // 예: 팟 2, 나 5베팅(총6), AI폴드 -> 환불5. 메인팟2.
+        // 이익 = (2 + 5) - 6 = +1 (정상)
+        let profit = (mainPot + refund1) - game.contrib[1];
+        log(`🎉 WIN (+${profit.toFixed(0)})`, 'l-user');
+
+        myCard.classList.add('winner'); aiCard.classList.add('loser');
     } 
-    else { // 무승부 (Winner === -1)
-        
-        // [FIX] 올인 상황 체크
-        // chips는 이미 베팅액이 차감된 상태입니다. 
-        // 1 미만(0)이라는 것은, 팟을 못 돌려받으면 다음 판 앤티를 못 내서 죽는다는 뜻입니다.
+    else { // 무승부
         if (chips[0] < 1 || chips[1] < 1) {
             log(`🤝 All-in Draw! Chips Returned.`, 'l-sys');
-            
-            // 올인 상황에서는 팟을 반반 나누어 각자에게 돌려줍니다 (Split)
             chips[0] += mainPot / 2;
             chips[1] += mainPot / 2;
-            
-            window.carriedPot = 0; // 이월 취소
+            window.carriedPot = 0;
         } else {
-            // 둘 다 칩에 여유가 있다면 기존 룰대로 팟 이월 (Carry Over)
             log(`🤝 DRAW - Pot (${mainPot}) Carried Over!`, 'l-sys');
             window.carriedPot = mainPot;
         }
@@ -746,7 +749,7 @@ function endRound() {
         setTimeout(() => {
             let msg = chips[0] < 1 ? "🎉 YOU WIN THE GAME! 🎉" : "💀 GAME OVER 💀";
             alert(msg);
-            location.reload(); // 게임 재시작
+            location.reload();
         }, 1000);
     } else {
         setTimeout(startRound, 2500);
