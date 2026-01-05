@@ -294,7 +294,7 @@ let game = null, round = 0;
 let chips = [100, 100]; // 0: AI, 1: User
 
 window.onload = () => {
-    solver.train(10000, (pct) => {
+    solver.train(30000, (pct) => {
         document.getElementById('load-bar').style.width = (pct*100)+'%';
     }).then(() => {
         document.getElementById('loading-screen').style.display = 'none';
@@ -504,4 +504,5 @@ function endRound() {
 </script>
 </body>
 </html>
+
 
