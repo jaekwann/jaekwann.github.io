@@ -521,13 +521,14 @@ async function runAI() {
     document.getElementById('ai-thought').style.display='block';
     
     let playerCardRank = game.hands[1].r; 
+    // unknownPool: 덱에 남은 카드 + 내 머리 위의 카드 (즉, 내가 가질 수 있는 모든 후보)
     let unknownPool = [...shoe.cards, game.hands[0]]; 
     
     let analysis = analyzeHand(playerCardRank, unknownPool);
     let equity = analysis.equity;
     let probTen = analysis.probTen;
     
-    // UI 업데이트 (승률 표시)
+    // UI 업데이트
     document.getElementById('ai-text').innerHTML = `Win Rate: ${(equity*100).toFixed(0)}% (Pot: ${game.pot})`;
     let bar = document.getElementById('win-rate-bar');
     bar.style.width=(equity*100)+'%';
@@ -543,94 +544,117 @@ async function runAI() {
     
     heroEl.style.display = 'none';
 
-    // AI 생각하는 시간 (딜레이)
     await new Promise(r=>setTimeout(r, 600+Math.random()*800));
 
     let key = `Opp:${game.hands[1].r}|Seq:${game.hist.join('')}`;
     let strat = solver.getNode(key).getAvgStrat();
     let valid = game.validActs();
 
-    /* --- [수학적 디테일: Effective Stack & Pot Odds] --- */
+    /* --- 기본 변수 계산 --- */
     let me = game.turn; 
     let opp = 1 - me;
-
     let myMax = game.stacks[me] + game.bets[me];
     let oppMax = game.stacks[opp] + game.bets[opp];
     let effectiveStack = Math.min(myMax, oppMax);
-
     let amountToMatch = Math.min(effectiveStack, game.bets[opp]); 
     let toCall = Math.max(0, amountToMatch - game.bets[me]); 
-
     let finalPotSize = game.pot + toCall;
     let requiredEquity = finalPotSize > 0 ? toCall / finalPotSize : 0;
 
-    /* --- 기존 AI 로직 (Deep Stack 보호 등) --- */
-    if (requiredEquity > 0.35) { 
-        if (![1, 9, 10].includes(game.hands[me].r)) {
-            strat[ACT.FOLD] *= 2.0; 
+    /* ========================================= */
+    /* [FIX 1] 카드 카운팅 완벽 적용 (Endgame God Mode) */
+    /* ========================================= */
+    // 남은 카드가 3장 이하(내꺼 포함)라면, AI는 거의 신의 영역에 도달함
+    let isCertainty = unknownPool.length <= 3;
+
+    if (isCertainty) {
+        // 승률이 100%면 무조건 승리 -> 절대 안 죽음
+        if (equity >= 0.99) {
+            strat[ACT.FOLD] = 0; // 폴드 확률 삭제
+            strat[ACT.ALLIN] = 1000; // 올인 선호도 극대화
+            strat[ACT.BET_P] = 500;
+        } 
+        // 승률이 0%면 무조건 패배 -> 10만 아니면 무조건 죽음
+        else if (equity <= 0.01 && probTen < 0.01) {
+            strat[ACT.FOLD] = 1000;
+            strat[ACT.CHECK] = 0; // 체크도 안 함 (어차피 지니까)
         }
     }
 
-    /* --- 상대 공격성 패턴 감지 --- */
+    /* ========================================= */
+    /* [FIX 2] Deep Stack Protection 버그 수정   */
+    /* ========================================= */
+    // 기존 코드에서 AI가 자기 카드(hands[me])를 훔쳐보고 1,9,10 아니면 죽는 코드가 있었음.
+    // 이를 삭제하고, 순수하게 '요구 승률(requiredEquity)'로만 판단하도록 수정.
+    if (requiredEquity > 0.4 && !isCertainty) { 
+        // 팟 오즈가 너무 나쁘면(상대가 엄청 크게 베팅하면) 폴드 빈도 증가
+        // 단, 내 승률이 60% 넘으면 쫄지 않음
+        if (equity < 0.6) {
+            strat[ACT.FOLD] *= 1.5; 
+        }
+    }
+
+    /* --- 상대 공격성 감지 --- */
     let aggroCount = 0;
     let hLen = game.hist.length;
     [1, 3].forEach(offset => {
         let idx = hLen - offset;
-        if (idx >= 0 && [2, 3, 4, 5].includes(game.hist[idx])) {
-            aggroCount++;
-        }
+        if (idx >= 0 && [2, 3, 4, 5].includes(game.hist[idx])) aggroCount++;
     });
 
-    /* --- EV+ Hero Call (동적 블러프 감지) --- */
     let effectiveBluffRate = userStats.getBluffRate();
+    if (aggroCount >= 1) effectiveBluffRate += 0.15;
+    if (aggroCount >= 2) effectiveBluffRate += 0.10;
 
-    if (aggroCount >= 1) { 
-        effectiveBluffRate += 0.15; 
-        if (aggroCount >= 2) effectiveBluffRate += 0.10; 
-    }
-
+    // Hero Call (블러핑 캐치)
     if (effectiveBluffRate > 0.3 && equity > 0.3 && equity < 0.65 && requiredEquity > 0.3) {
         let heroFactor = effectiveBluffRate > 0.45 ? 0.7 : 0.5;
         let shift = strat[ACT.FOLD] * heroFactor;
         strat[ACT.FOLD] -= shift;
-        
         if (valid.includes(ACT.CHECK)) strat[ACT.CHECK] += shift;
-
         heroEl.style.display = 'block';
-        heroEl.innerText = `👁️ Hero Call! (Bluff ${(effectiveBluffRate*100).toFixed(0)}% / Aggro detected)`;
+        heroEl.innerText = `👁️ Hero Call!`;
     }
 
     /* ========================================= */
-    /* --- [NEW] 칩 상황에 따른 AI 기분 변화 --- */
+    /* [FIX 3] Survival 모드 강화 (Tuned)        */
     /* ========================================= */
     let totalChips = game.stacks[0] + game.stacks[1] + game.pot;
     let myShare = (game.stacks[0] + game.bets[0]) / totalChips;
 
-    // 기본값 (평소 상태)
     let moodAggro = 1.0; 
     let moodFear = 0.0;
     let moodText = "🤖 Normal";
 
     if (myShare >= 0.65) {
-        // 🦁 지배자 모드 (칩 65% 이상)
-        moodAggro = 1.15;    // 공격성 1.15배
-        moodFear = -0.02;   // 10 공포 약간 감소
+        // 🦁 Leader
+        moodAggro = 1.15;   
+        moodFear = -0.01;   
         moodText = "🦁 Leader";
     } 
     else if (myShare <= 0.35) {
-        // 🛡️ 생존 모드 (칩 35% 미만)
-        moodAggro = 0.93;    // 공격성 0.93배 (신중)
-        moodFear = 0.02;    // 10 공포 약간 증가
-        moodText = "🛡️ Survival";
+        // 🛡️ Survival
+        // 칩이 없는데 승률이 좋다? (0.55 이상) -> 기회다! 더 공격적으로!
+        if (equity > 0.55) {
+             moodAggro = 1.3; // "이건 먹어야 산다" 모드
+             moodFear = 0.0;  // 이때는 10 공포도 잊음
+             moodText = "⚔️ Desperate Fight";
+        } else {
+             // 승률이 별로면 쥐죽은듯 있음
+             moodAggro = 0.95; 
+             moodFear = 0.01; 
+             moodText = "🛡️ Survival";
+        }
     } 
 
-    // UI에 AI 상태 텍스트 추가
     document.getElementById('ai-text').innerHTML += `<br><span style="font-size:0.9em; color:#ffd700;">${moodText}</span>`;
 
-
-    /* --- 1. 기본 Bias (기분 반영) --- */
+    /* --- 1. Bias 계산 --- */
     let bias = (equity - 0.5) * 2.4 * moodAggro;
     
+    // 승률 100% 확실하면 Bias를 폭발시켜서 무조건 베팅하게 유도
+    if (isCertainty && equity > 0.99) bias = 10.0;
+
     if(bias > 0) {
         [ACT.BET_H, ACT.BET_P, ACT.ALLIN].forEach(a => { if(valid.includes(a)) strat[a]*=(1+bias*1.5); });
         if(valid.includes(ACT.FOLD)) strat[ACT.FOLD]*=(1-bias*0.8);
@@ -640,10 +664,11 @@ async function runAI() {
         [ACT.BET_H, ACT.BET_P, ACT.ALLIN].forEach(a => { if(valid.includes(a)) strat[a]*=(1-def*0.8); });
     }
 
-    /* --- 2. 10 패널티 회피 (기분 반영) --- */
+    /* --- 2. 10 패널티 회피 --- */
     let effectiveFearThreshold = 0.1 - moodFear; 
 
-    if (probTen > effectiveFearThreshold && valid.includes(ACT.FOLD)) {
+    // 확실하게 이기는 상황(isCertainty)이면 10 공포 따위 무시함
+    if (!isCertainty && probTen > effectiveFearThreshold && valid.includes(ACT.FOLD)) {
         let penaltyFactor = Math.min(Math.max(probTen - 0.1, 0) * 2.5, 0.8);
         let foldProb = strat[ACT.FOLD];
         let reduceAmount = foldProb * penaltyFactor; 
@@ -655,14 +680,13 @@ async function runAI() {
         strat[ACT.FOLD] = Math.max(strat[ACT.FOLD], 0.05);
     }
 
-    /* --- 3. 사용자 폴드 성향 대응 --- */
+    /* --- 3. 사용자 성향 대응 --- */
     if (userStats.totalHands >= 5) {
         let diff = userStats.getFoldRate() - 0.4;
         let mult = Math.min(Math.max(1.0 + (diff*0.5), 0.6), 1.5);
         [ACT.BET_H, ACT.BET_P, ACT.ALLIN].forEach(a => { if(valid.includes(a)) strat[a] *= mult; });
     }
 
-    // 최종 행동 결정 (룰렛 돌리기)
     let vSum=0; valid.forEach(a=>vSum+=strat[a]);
     let action = valid.includes(ACT.CHECK)?ACT.CHECK:ACT.FOLD;
     if(vSum>0) {
@@ -830,4 +854,5 @@ function addBadge(el, txt, cls) {
 </script>
 </body>
 </html>
+
 
