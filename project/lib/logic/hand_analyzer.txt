@@ -1,0 +1,53 @@
+// lib/logic/hand_analyzer.dart
+
+import '../models/card.dart';
+
+/// 분석 결과를 담을 데이터 클래스
+class HandAnalysisResult {
+  final double equity; // 승률 (0.0 ~ 1.0)
+  final double probTen; // 10일 확률 (0.0 ~ 1.0)
+
+  HandAnalysisResult({required this.equity, required this.probTen});
+}
+
+/// 내 승률과 10 확률 계산 함수
+/// [oppRank]: 상대방의 공개된 카드 숫자
+/// [unknownPool]: 덱에 남은 카드 + 내 머리 위의 카드 (내가 가질 수 있는 모든 후보)
+HandAnalysisResult analyzeHand(int oppRank, List<GameCard> unknownPool) {
+  double wins = 0.0;
+  int total = 0;
+  int tenCount = 0;
+
+  for (var c in unknownPool) {
+    int myPotentialRank = c.rank;
+    total++;
+
+    // 10 카운팅 (패널티 계산용)
+    if (myPotentialRank == 10) tenCount++;
+
+    // 1. 레볼루션 (1 vs 10)
+    // 내가 1이고 상대가 10이면 승리
+    if (myPotentialRank == 1 && oppRank == 10) {
+      wins += 1.0;
+      continue;
+    }
+    // 내가 10이고 상대가 1이면 패배 (wins 증가 안함)
+    if (myPotentialRank == 10 && oppRank == 1) {
+      continue;
+    }
+
+    // 2. 일반 대결 (숫자가 높으면 승리)
+    if (myPotentialRank > oppRank) {
+      wins += 1.0;
+    }
+    // 3. 무승부
+    else if (myPotentialRank == oppRank) {
+      wins += 0.5;
+    }
+  }
+
+  return HandAnalysisResult(
+    equity: total == 0 ? 0.5 : wins / total,
+    probTen: total == 0 ? 0.0 : tenCount / total,
+  );
+}
